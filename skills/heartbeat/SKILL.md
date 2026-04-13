@@ -19,10 +19,10 @@ Periodic keep-alive and journaling skill.
 
 1. Send a brief online status to Telegram (plain text, no emoji)
 2. Review recent conversation for notable events
-3. Write events to `memory/journal/YYYY-MM-DD.md`
+3. Write events to `.claude/memory/journal/YYYY-MM-DD.md`
 
 ### Last heartbeat of the day
-- Distill journal entries into long-term memory files under `memory/`
+- Distill journal entries into long-term memory files under `.claude/memory/`
 
 ### Monday's last heartbeat
 - Additionally do a weekly review across the week's journals
