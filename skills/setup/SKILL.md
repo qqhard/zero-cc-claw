@@ -10,6 +10,8 @@ allowed-tools:
   - Glob
   - Grep
   - AskUserQuestion
+  - TaskCreate
+  - TaskUpdate
 ---
 
 # Zero-Claw Setup
@@ -17,6 +19,23 @@ allowed-tools:
 Interactive setup wizard. Guide the user step by step.
 
 Plugin root is available as `$CLAUDE_PLUGIN_ROOT`.
+
+## Before Starting
+
+Use TaskCreate to create **all** tasks upfront so the user sees the full picture:
+
+1. "Choose language"
+2. "Check prerequisites (tmux, node, pm2)"
+3. "Check Telegram plugin"
+4. "Create supervisor bot (via BotFather)"
+5. "Get Telegram user ID"
+6. "Collect user info (name, timezone)"
+7. "Choose working directory"
+8. "Generate project files"
+9. "Start supervisor"
+10. "Verify and launch"
+
+Mark each task `in_progress` when starting it, `completed` when done.
 
 ## Steps
 
