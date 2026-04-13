@@ -1,0 +1,8 @@
+{
+  "name": "zero-claw-supervisor",
+  "type": "module",
+  "private": true,
+  "dependencies": {
+    "telegraf": "^4.16.3"
+  }
+}

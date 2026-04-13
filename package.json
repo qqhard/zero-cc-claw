@@ -1,0 +1,15 @@
+{
+  "name": "zero-claw",
+  "version": "0.1.0",
+  "description": "Turn Claude Code into a personal AI assistant via Telegram",
+  "type": "module",
+  "private": true,
+  "files": [
+    ".claude-plugin",
+    "skills",
+    "commands",
+    "supervisor",
+    "template",
+    "start.sh"
+  ]
+}

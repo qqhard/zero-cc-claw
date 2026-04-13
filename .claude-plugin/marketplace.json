@@ -1,0 +1,15 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "zero-claw",
+  "owner": { "name": "Zero-Claw", "email": "zero-claw@example.com" },
+  "plugins": [
+    {
+      "name": "zero-claw",
+      "source": "./",
+      "description": "Turn Claude Code into a personal AI assistant via Telegram. Zero infrastructure.",
+      "version": "0.1.0",
+      "keywords": ["telegram", "assistant", "bot", "supervisor"],
+      "category": "productivity"
+    }
+  ]
+}
