@@ -56,14 +56,11 @@ Supervisor Bot ---- Node.js + pm2
 
 ### Install
 
-```bash
-# 1. Add the Zero-Claw marketplace
-claude plugin marketplace add qqhard/zero-claw
+Start a Claude Code session, then run these slash commands:
 
-# 2. Install the plugin
-claude plugin install zero-claw
-
-# 3. Run the setup wizard (inside Claude Code)
+```
+/plugin marketplace add qqhard/zero-claw
+/plugin install zero-claw
 /zero-claw:setup
 ```
 
