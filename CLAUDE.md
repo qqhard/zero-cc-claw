@@ -45,8 +45,7 @@ On first launch, detect unconfigured state and guide the user interactively.
 10. Start supervisor: `pm2 start ecosystem.config.cjs && pm2 save`.
 11. Confirm setup complete. Tell user to launch via tmux next time:
     ```
-    tmux new-session -d -s bot -c /path/to/zero-claw
-    tmux send-keys -t bot:0.0 './start.sh' Enter
+    tmux new-session -s <assistant-name> -c <working-dir> './start.sh'
     ```
 
 **Important**: Do NOT auto-launch `start.sh` during first-run setup — the user is already in an interactive Claude session. Just prepare everything so the next `./start.sh` works.

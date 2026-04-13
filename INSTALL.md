@@ -83,15 +83,13 @@ The bot will match your language in all replies.
 ## Step 6: Launch
 
 ```bash
-# Start tmux session
-tmux new-session -d -s bot -c /path/to/zero-claw
-
-# Launch Claude Code inside tmux
-tmux send-keys -t bot:0.0 './start.sh' Enter
-
-# Start supervisor with pm2
+# Start supervisor first
 pm2 start ecosystem.config.cjs
 pm2 save
+
+# Launch Claude Code in tmux (you'll see it start up)
+tmux new-session -s mybot -c /path/to/zero-claw './start.sh'
+# Detach later with Ctrl-b d, re-attach with: tmux attach -t mybot
 ```
 
 ## Step 7: Verify
