@@ -84,7 +84,8 @@ Mark each task `in_progress` when starting it, `completed` when done.
 
 10. **Summary**: Tell the user everything is ready. Show how to launch (using assistant name as tmux session):
     ```bash
-    tmux new-session -d -s <assistant-name-lowercase> -c ~/<assistant-name-lowercase>
-    tmux send-keys -t <assistant-name-lowercase>:0.0 './start.sh' Enter
+    tmux new-session -s <name> -c ~/<name> './start.sh'
     ```
-    And how to control via supervisor bot: `/status`, `/restart`, etc.
+    This attaches the user directly into the tmux session so they can watch Claude Code start up. To detach later: `Ctrl-b d`. To re-attach: `tmux attach -t <name>`.
+    
+    Also remind them of supervisor bot commands: `/status`, `/restart`, etc.
