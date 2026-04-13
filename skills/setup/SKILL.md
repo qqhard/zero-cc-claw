@@ -110,14 +110,14 @@ Then for each step below: TaskUpdate → `in_progress` when starting, `completed
      ```
    - Tell the user: "Your bot is starting up. You can watch it with: `tmux attach -t <name>`"
 
-10. **Pair Telegram**: Automate the pairing through tmux send-keys:
-    1. Tell the user: "Open Telegram and send any message to your main bot @xxx_bot"
-    2. The bot will reply with a 6-character pairing code
-    3. Ask the user to paste the code here
-    4. Send the pair command into the running bot session:
-       ```bash
-       tmux send-keys -t <name>:0.0 -l '/telegram:access pair <code>' && tmux send-keys -t <name>:0.0 Enter
-       ```
-    5. Confirm: "Paired! Messages you send to @xxx_bot now reach your assistant."
-    6. Give a brief tour: memory system, heartbeat, supervisor `/help`
-    7. Tell user: `tmux attach -t <name>` to watch, `Ctrl-b d` to detach
+10. **Pair Telegram**:
+    1. Tell the user: "Open Telegram and send any message (e.g. 'hello') to your main bot @xxx_bot"
+    2. Wait for the user to confirm. Two possible outcomes:
+       - **Bot replies normally** → already paired, no further action needed
+       - **Bot replies with a 6-char pairing code** → ask the user to paste the code, then send into the bot session:
+         ```bash
+         tmux send-keys -t <name>:0.0 -l '/telegram:access pair <code>' && tmux send-keys -t <name>:0.0 Enter
+         ```
+    3. Confirm: "Your assistant is live! Messages to @xxx_bot now reach it."
+    4. Give a brief tour: memory system, heartbeat, supervisor `/help`
+    5. Tell user: `tmux attach -t <name>` to watch, `Ctrl-b d` to detach
