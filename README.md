@@ -1,5 +1,7 @@
 # Zero-Claw
 
+> v0.1.0
+
 Turn [Claude Code](https://claude.ai/claude-code) into a personal AI assistant you can talk to on Telegram. No server, no database, no gateway — just compose existing tools.
 
 ## Why
@@ -55,11 +57,13 @@ Supervisor Bot ---- Node.js + pm2
 ### Install
 
 ```bash
-# Add the marketplace and install the plugin
-claude plugins marketplace add qqhard/zero-claw
-claude plugins install zero-claw
+# 1. Add the Zero-Claw marketplace
+claude plugin marketplace add qqhard/zero-claw
 
-# Run the setup wizard
+# 2. Install the plugin
+claude plugin install zero-claw
+
+# 3. Run the setup wizard (inside Claude Code)
 /zero-claw:setup
 ```
 
