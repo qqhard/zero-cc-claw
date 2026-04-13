@@ -74,7 +74,13 @@ Then for each step below: TaskUpdate → `in_progress` when starting, `completed
    
    For each bot, tell the user to paste the **entire BotFather response** — parse the token yourself using regex: `/\d+:[A-Za-z0-9_-]{35,}/`. Clearly label which is which when confirming back.
 
-5. **Configure Telegram plugin**: Run `/telegram:configure` and guide the user to paste the **main bot** token to pair the channel.
+5. **Configure Telegram plugin**: Guide the user through the full pairing flow:
+   1. Run `/telegram:configure` — this saves the **main bot** token
+   2. Tell the user: "Now open Telegram and send any message to your main bot (@xxx_bot)"
+   3. The bot will reply with a 6-character pairing code
+   4. Tell the user to paste that code here
+   5. Run `/telegram:access pair <code>` to complete the pairing
+   6. Confirm success: "Your Telegram is now connected. Messages you send to @xxx_bot will reach this assistant."
 
 6. **User ID**: Ask the user to message [@userinfobot](https://t.me/userinfobot) on Telegram. They can paste the entire reply — extract the numeric `Id` field yourself.
 
