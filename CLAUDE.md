@@ -33,7 +33,7 @@ On first launch, detect unconfigured state and guide the user interactively.
 
 1. Greet the user. Explain what Zero-Claw does in 2 sentences.
 2. Ask preferred language (the rest of setup continues in that language).
-3. Check prerequisites: `tmux --version`, `node --version`, `pm2 --version`. If missing, tell the user what to install and wait.
+3. Check prerequisites: `tmux --version`, `node --version`, `pm2 --version`, `bun --version`. If missing, tell the user what to install and wait.
 4. Check if Telegram plugin is installed (`claude plugins list` or check plugin directory). If not, run `claude plugins install telegram` and guide the user through pairing.
 5. Ask for **supervisor bot token** (link to @BotFather with instructions).
 6. Ask for **Telegram user_id** (link to @userinfobot).

@@ -1,6 +1,6 @@
 # Zero-Claw
 
-> v0.1.0
+> v0.2.0
 
 Turn [Claude Code](https://claude.ai/claude-code) into a personal AI assistant on Telegram.
 
@@ -91,6 +91,16 @@ Send these to your supervisor bot on Telegram:
 | `/screen` | Current terminal screen |
 | `/send <text>` | Type into the assistant's terminal |
 | `/help` | Show all commands |
+
+## Upgrading
+
+Already have a bot running? Upgrade to the latest Zero-Claw in a Claude Code session:
+
+```
+/zero-claw:upgrade
+```
+
+The upgrade wizard detects your current setup, shows what's changed, and lets you choose what to update. It never overwrites your CLAUDE.md personality or custom config — only adds missing sections and replaces infrastructure components (supervisor, start.sh, skills).
 
 ## Extending Your Bot
 
