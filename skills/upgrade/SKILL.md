@@ -20,13 +20,24 @@ Upgrade an existing project to the latest Zero-Claw version. Old setups may be h
 
 Plugin root is available as `$CLAUDE_PLUGIN_ROOT`. The canonical latest versions of all components live there.
 
-## UX Rules
+## UX Rules — CRITICAL
 
-- **One component at a time**: diagnose → show findings → ask → apply → next. Don't batch all decisions into one wall of text.
-- **Use AskUserQuestion for every decision**: each component gets its own question with options. Never dump a multi-component plan and ask the user to pick from a list.
-- **Use TaskCreate per component**: each upgradeable component is its own task, so the user sees progress as you go.
-- **Show before asking**: before presenting upgrade options, briefly explain what's different (2-3 lines max). If the user wants details, offer "Show diff" as an option.
-- **Backup before modify**: copy to `<file>.bak.<timestamp>` before any change.
+**STOP-AND-WAIT**: After each AskUserQuestion call, you MUST stop and wait for the user's response before doing anything else. Do NOT proceed to the next component, do NOT present the next question, do NOT summarize upcoming work. Just stop.
+
+**ONE question per message**: Each message you send may contain AT MOST one AskUserQuestion. Never call AskUserQuestion multiple times in one response.
+
+**NEVER batch decisions**: Do NOT list all components and their options in a single message. Do NOT present an "upgrade plan" with all components at once. Do NOT ask "should I proceed with all of these?" Process each component as a separate conversation turn.
+
+**Flow per component**:
+1. Brief explanation of what's different (2-3 lines max)
+2. AskUserQuestion with options for THIS component only
+3. STOP. Wait for user response.
+4. Apply the user's choice (backup first)
+5. Move to next component — go to step 1
+
+**TaskCreate per component**: each upgradeable component gets its own task for progress tracking.
+
+**Backup before modify**: copy to `<file>.bak.<timestamp>` before any change.
 
 ## Steps
 
@@ -73,7 +84,17 @@ Components to check:
 
 **f) Memory/Journal structure** — check if `memory/MEMORY.md`, `journal/`, `USER.md` exist.
 
-After diagnosis, show a summary table of all components and their status. Then proceed to Phase 3 — one component at a time.
+After diagnosis, show a brief summary table of all components and their status (just name + status, no details). Example:
+
+```
+supervisor         needs update
+ecosystem.config   needs update
+bot/start.sh       needs update
+bot/CLAUDE.md      ok
+bot/skills         missing
+```
+
+Then say: "Let's go through each one." and immediately start Phase 3 with the first component. Do NOT describe what each upgrade involves here — that happens in Phase 3, one at a time.
 
 ### Phase 3: Upgrade each component
 
