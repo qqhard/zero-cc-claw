@@ -1,7 +1,7 @@
 module.exports = {
   apps: [
     {
-      name: 'supervisor',  // IMPORTANT: rename to avoid pm2 collisions, e.g. 'mybot-supervisor'
+      name: 'supervisor',  // IMPORTANT: rename to <dirname>-supervisor to avoid pm2 collisions
       script: 'supervisor/index.mjs',
       cwd: __dirname,
       autorestart: true,

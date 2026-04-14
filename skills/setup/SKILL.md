@@ -116,7 +116,7 @@ Then for each step below: TaskUpdate → `in_progress` when starting, `completed
    
    In the **parent directory** (current working directory):
    - Copy `$CLAUDE_PLUGIN_ROOT/supervisor/` → `supervisor/`, run `npm install`.
-   - Generate `ecosystem.config.cjs` with supervisor bot token, user_id, and `BOTS` set to `"<name>:<name>:<cwd>/<name>"`. **The pm2 app name MUST be `<assistant-name>-supervisor`** (e.g. `thoth-supervisor`), NOT just `supervisor` — multiple Zero-Claw projects on the same machine would collide otherwise.
+   - Generate `ecosystem.config.cjs` with supervisor bot token, user_id, and `BOTS` set to `"<name>:<name>:<cwd>/<name>"`. **The pm2 app name MUST be `<dirname>-supervisor`** where `<dirname>` is the project root directory name (e.g. if cwd is `/home/user/my-project`, use `my-project-supervisor`). Do NOT use the assistant name — a project can have multiple bots but only one supervisor. Before finalizing, run `pm2 jlist` to check for name collisions; if the name is taken, append a suffix or ask the user.
    
    In the **bot directory** (`<cwd>/<name>/`):
    - Copy `$CLAUDE_PLUGIN_ROOT/template/CLAUDE.md` → `CLAUDE.md`, fill in all placeholders (assistant name, user name, timezone, language).

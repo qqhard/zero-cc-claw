@@ -152,7 +152,7 @@ After applying: `cd supervisor && npm install`. For pm2 restart, use the project
 - "Show diff" — show old vs new config
 - "Skip"
 
-Preserve any custom env vars the user added. **Rename pm2 app name** from generic `supervisor` to `<assistant-name>-supervisor` if it's still the generic name. Warn the user that pm2 will see this as a new process — they may need to `pm2 delete supervisor && pm2 start ecosystem.config.cjs && pm2 save`.
+Preserve any custom env vars the user added. **Rename pm2 app name** from generic `supervisor` to `<dirname>-supervisor` (where `<dirname>` is the project root directory name, e.g. `my-project-supervisor`) if it's still the generic name. Run `pm2 jlist` to verify the new name doesn't collide. Warn the user that pm2 will see this as a new process — they may need to `pm2 delete supervisor && pm2 start ecosystem.config.cjs && pm2 save`.
 
 **Bot CLAUDE.md** (if missing sections — this is the tricky one):
 - "Add missing sections" — inject new sections (Heartbeat, Memory System, etc.) without touching existing content
