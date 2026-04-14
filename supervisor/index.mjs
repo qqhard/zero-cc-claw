@@ -13,11 +13,33 @@ if (!BOT_TOKEN) {
 const ALLOWED_USERS = new Set(
   (process.env.ALLOWED_USERS || '').split(',').filter(Boolean).map(Number)
 );
-const TMUX_SESSION = process.env.TMUX_SESSION || 'bot';
-const TMUX_TARGET = `${TMUX_SESSION}:0.0`;
-const WORK_DIR = process.env.WORK_DIR || process.cwd();
 const START_CMD = process.env.START_CMD || './start.sh';
 const WATCHDOG_INTERVAL = parseInt(process.env.WATCHDOG_INTERVAL || '0');
+const BOOT_DELAY = parseInt(process.env.BOOT_DELAY || '10');
+
+// Parse BOTS: "name:session:dir,name2:session2:dir2"
+// Falls back to legacy single-bot env vars
+function parseBots() {
+  const botsEnv = process.env.BOTS || '';
+  if (botsEnv) {
+    return botsEnv.split(',').map((entry) => {
+      const [name, session, workDir] = entry.split(':');
+      return { name, session, target: `${session}:0.0`, workDir };
+    });
+  }
+  // Legacy single-bot fallback
+  const session = process.env.TMUX_SESSION || 'bot';
+  const workDir = process.env.WORK_DIR || process.cwd();
+  return [{ name: session, session, target: `${session}:0.0`, workDir }];
+}
+
+const BOTS = parseBots();
+const botsByName = new Map(BOTS.map((b) => [b.name, b]));
+
+function getBot(name) {
+  if (!name && BOTS.length === 1) return BOTS[0];
+  return botsByName.get(name) || null;
+}
 
 // --- Helpers ---
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -32,34 +54,34 @@ function stripAnsi(str) {
     .replace(/\x1B\][^\x07]*\x07/g, '');
 }
 
-// --- tmux ---
-function sessionExists() {
+// --- tmux operations (per bot) ---
+function sessionExists(bot) {
   try {
-    sh(`tmux has-session -t ${TMUX_SESSION} 2>/dev/null`);
+    sh(`tmux has-session -t ${bot.session} 2>/dev/null`);
     return true;
   } catch {
     return false;
   }
 }
 
-function ensureSession() {
-  if (!sessionExists()) {
-    sh(`tmux new-session -d -s ${TMUX_SESSION} -c ${WORK_DIR}`);
+function ensureSession(bot) {
+  if (!sessionExists(bot)) {
+    sh(`tmux new-session -d -s ${bot.session} -c ${bot.workDir}`);
   }
 }
 
-function getPanePid() {
+function getPanePid(bot) {
   try {
     return parseInt(
-      sh(`tmux display-message -t ${TMUX_TARGET} -p '#{pane_pid}'`)
+      sh(`tmux display-message -t ${bot.target} -p '#{pane_pid}'`)
     );
   } catch {
     return null;
   }
 }
 
-function getClaudePid() {
-  const panePid = getPanePid();
+function getClaudePid(bot) {
+  const panePid = getPanePid(bot);
   if (!panePid) return null;
   try {
     const children = sh(`pgrep -P ${panePid}`)
@@ -88,12 +110,12 @@ function getClaudePid() {
   return null;
 }
 
-function isRunning() {
-  return getClaudePid() !== null;
+function isRunning(bot) {
+  return getClaudePid(bot) !== null;
 }
 
-async function killProcess() {
-  const panePid = getPanePid();
+async function killProcess(bot) {
+  const panePid = getPanePid(bot);
   if (!panePid) return false;
 
   let children;
@@ -117,7 +139,7 @@ async function killProcess() {
 
   for (let i = 0; i < 10; i++) {
     await sleep(500);
-    if (!isRunning()) return true;
+    if (!isRunning(bot)) return true;
   }
 
   for (const p of children) {
@@ -131,124 +153,193 @@ async function killProcess() {
   return true;
 }
 
-const BOOT_DELAY = parseInt(process.env.BOOT_DELAY || '10'); // seconds to wait before sending init message
-
-function startProcess() {
-  ensureSession();
-  sh(`tmux send-keys -t ${TMUX_TARGET} 'cd ${WORK_DIR} && ${START_CMD}' Enter`);
-  // Claude Code needs an initial message to trigger SessionStart hook
+function startProcess(bot) {
+  ensureSession(bot);
+  sh(
+    `tmux send-keys -t ${bot.target} 'cd ${bot.workDir} && ${START_CMD}' Enter`
+  );
   setTimeout(() => {
     try {
-      execFileSync('tmux', ['send-keys', '-t', TMUX_TARGET, '-l', 'start'], {
+      execFileSync('tmux', ['send-keys', '-t', bot.target, '-l', 'start'], {
         timeout: 10_000,
       });
-      execFileSync('tmux', ['send-keys', '-t', TMUX_TARGET, 'Enter'], {
+      execFileSync('tmux', ['send-keys', '-t', bot.target, 'Enter'], {
         timeout: 10_000,
       });
-    } catch { /* session may not be ready yet */ }
+    } catch {
+      /* session may not be ready */
+    }
   }, BOOT_DELAY * 1000);
 }
 
-function capturePane(lines = 50) {
+function capturePane(bot, lines = 50) {
   try {
     return stripAnsi(
-      sh(`tmux capture-pane -t ${TMUX_TARGET} -p -S -${lines}`)
+      sh(`tmux capture-pane -t ${bot.target} -p -S -${lines}`)
     );
   } catch {
     return null;
   }
 }
 
-// --- Bot ---
-const bot = new Telegraf(BOT_TOKEN);
+// --- Parse bot name from command args ---
+function parseBotArg(ctx) {
+  const text = ctx.message.text;
+  const parts = text.split(/\s+/).slice(1);
+  const name = parts[0];
+  if (name) {
+    const bot = getBot(name);
+    if (!bot) {
+      ctx.reply(
+        `Unknown bot: ${name}\nAvailable: ${BOTS.map((b) => b.name).join(', ')}`
+      );
+      return null;
+    }
+    return bot;
+  }
+  if (BOTS.length === 1) return BOTS[0];
+  ctx.reply(
+    `Multiple bots configured. Specify which one:\n${BOTS.map((b) => `  ${b.name}`).join('\n')}\n\nExample: /status ${BOTS[0].name}`
+  );
+  return null;
+}
 
-bot.use((ctx, next) => {
+// --- Telegram Bot ---
+const tg = new Telegraf(BOT_TOKEN);
+
+tg.use((ctx, next) => {
   if (ALLOWED_USERS.size && !ALLOWED_USERS.has(ctx.from?.id)) return;
   return next();
 });
 
-bot.command('restart', async (ctx) => {
-  const msg = await ctx.reply('Restarting...');
-  await killProcess();
-  startProcess();
+tg.command('restart', async (ctx) => {
+  const bot = parseBotArg(ctx);
+  if (!bot) return;
+  const msg = await ctx.reply(`Restarting ${bot.name}...`);
+  await killProcess(bot);
+  startProcess(bot);
   await ctx.telegram.editMessageText(
     ctx.chat.id,
     msg.message_id,
     null,
-    'Restarted'
+    `${bot.name} restarted`
   );
 });
 
-bot.command('stop', async (ctx) => {
-  if (!isRunning()) return ctx.reply('Not running');
-  await killProcess();
-  await ctx.reply('Stopped');
+tg.command('stop', async (ctx) => {
+  const bot = parseBotArg(ctx);
+  if (!bot) return;
+  if (!isRunning(bot)) return ctx.reply(`${bot.name} not running`);
+  await killProcess(bot);
+  await ctx.reply(`${bot.name} stopped`);
 });
 
-bot.command('start', async (ctx) => {
-  if (isRunning()) return ctx.reply('Already running');
-  startProcess();
-  await ctx.reply('Started');
+tg.command('start', async (ctx) => {
+  const bot = parseBotArg(ctx);
+  if (!bot) return;
+  if (isRunning(bot)) return ctx.reply(`${bot.name} already running`);
+  startProcess(bot);
+  await ctx.reply(`${bot.name} started`);
 });
 
-bot.command('status', async (ctx) => {
-  const claudePid = getClaudePid();
-  const parts = [claudePid ? 'Running' : 'Stopped'];
-  if (claudePid) parts.push(`claude PID: ${claudePid}`);
-  if (!sessionExists()) parts.push('tmux session not found');
+tg.command('status', async (ctx) => {
+  // No arg + multiple bots → show all
+  const text = ctx.message.text;
+  const arg = text.split(/\s+/)[1];
+
+  if (!arg && BOTS.length > 1) {
+    const lines = BOTS.map((b) => {
+      const pid = getClaudePid(b);
+      return `${b.name}: ${pid ? `running (PID ${pid})` : 'stopped'}`;
+    });
+    return ctx.reply(lines.join('\n'));
+  }
+
+  const bot = parseBotArg(ctx);
+  if (!bot) return;
+  const claudePid = getClaudePid(bot);
+  const parts = [claudePid ? `${bot.name}: running` : `${bot.name}: stopped`];
+  if (claudePid) parts.push(`PID: ${claudePid}`);
+  if (!sessionExists(bot)) parts.push('tmux session not found');
   await ctx.reply(parts.join('\n'));
 });
 
-bot.command('logs', async (ctx) => {
-  const content = capturePane(80);
+tg.command('logs', async (ctx) => {
+  const bot = parseBotArg(ctx);
+  if (!bot) return;
+  const content = capturePane(bot, 80);
   if (!content?.trim()) return ctx.reply('No logs');
   const text = content.length > 4000 ? '...' + content.slice(-4000) : content;
   await ctx.reply(text);
 });
 
-bot.command('screen', async (ctx) => {
-  const content = capturePane(30);
+tg.command('screen', async (ctx) => {
+  const bot = parseBotArg(ctx);
+  if (!bot) return;
+  const content = capturePane(bot, 30);
   if (!content?.trim()) return ctx.reply('No screen');
   await ctx.reply(content);
 });
 
-bot.command('send', async (ctx) => {
-  const text = ctx.message.text.replace(/^\/send\s*/, '');
+tg.command('send', async (ctx) => {
+  // /send <bot> <text>  or  /send <text> (single bot)
+  const parts = ctx.message.text.replace(/^\/send\s*/, '');
+  let bot, text;
+  if (BOTS.length > 1) {
+    const firstWord = parts.split(/\s+/)[0];
+    bot = getBot(firstWord);
+    text = bot ? parts.slice(firstWord.length).trim() : null;
+    if (!bot) {
+      return ctx.reply(
+        `Specify bot: /send <bot> <text>\nAvailable: ${BOTS.map((b) => b.name).join(', ')}`
+      );
+    }
+  } else {
+    bot = BOTS[0];
+    text = parts;
+  }
   if (!text) return ctx.reply('Usage: /send <text>');
-  execFileSync('tmux', ['send-keys', '-t', TMUX_TARGET, '-l', text], {
+  execFileSync('tmux', ['send-keys', '-t', bot.target, '-l', text], {
     timeout: 10_000,
   });
-  execFileSync('tmux', ['send-keys', '-t', TMUX_TARGET, 'Enter'], {
+  execFileSync('tmux', ['send-keys', '-t', bot.target, 'Enter'], {
     timeout: 10_000,
   });
   await ctx.reply('Sent');
 });
 
-bot.command('help', (ctx) =>
+tg.command('help', (ctx) => {
+  const botHint =
+    BOTS.length > 1
+      ? `\n\nBots: ${BOTS.map((b) => b.name).join(', ')}\nAdd bot name after command, e.g. /status ${BOTS[0].name}`
+      : '';
   ctx.reply(
-    '/restart - Restart Claude Code\n' +
-      '/stop - Stop\n' +
-      '/start - Start\n' +
-      '/status - Status\n' +
+    '/restart - Restart bot\n' +
+      '/stop - Stop bot\n' +
+      '/start - Start bot\n' +
+      '/status - Status (all bots if no arg)\n' +
       '/logs - Recent logs (80 lines)\n' +
       '/screen - Current screen\n' +
       '/send <text> - Type into TUI\n' +
-      '/help - This message'
-  )
-);
+      '/help - This message' +
+      botHint
+  );
+});
 
-bot.on('text', (ctx) => ctx.reply('Send /help for available commands'));
+tg.on('text', (ctx) => ctx.reply('Send /help for available commands'));
 
 // --- Watchdog ---
 if (WATCHDOG_INTERVAL > 0) {
   setInterval(() => {
-    if (!isRunning() && sessionExists()) {
-      console.log('[watchdog] process died, restarting...');
-      startProcess();
-      for (const uid of ALLOWED_USERS) {
-        bot.telegram
-          .sendMessage(uid, 'Claude Code crashed — auto-restarted')
-          .catch(() => {});
+    for (const bot of BOTS) {
+      if (!isRunning(bot) && sessionExists(bot)) {
+        console.log(`[watchdog] ${bot.name} died, restarting...`);
+        startProcess(bot);
+        for (const uid of ALLOWED_USERS) {
+          tg.telegram
+            .sendMessage(uid, `${bot.name} crashed — auto-restarted`)
+            .catch(() => {});
+        }
       }
     }
   }, WATCHDOG_INTERVAL * 1000);
@@ -256,8 +347,10 @@ if (WATCHDOG_INTERVAL > 0) {
 }
 
 // --- Launch ---
-bot.launch();
-console.log(`Supervisor started | tmux: ${TMUX_TARGET}`);
+tg.launch();
+console.log(
+  `Supervisor started | bots: ${BOTS.map((b) => `${b.name}@${b.target}`).join(', ')}`
+);
 
-process.once('SIGINT', () => bot.stop('SIGINT'));
-process.once('SIGTERM', () => bot.stop('SIGTERM'));
+process.once('SIGINT', () => tg.stop('SIGINT'));
+process.once('SIGTERM', () => tg.stop('SIGTERM'));

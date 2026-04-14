@@ -82,13 +82,20 @@ Then for each step below: TaskUpdate → `in_progress` when starting, `completed
    - **Brief intro** (optional): Ask if there's anything else the assistant should know — role, interests, work context. Keep it short, 1-2 sentences is fine. Can be skipped.
    - **Assistant name**: Ask the user to name their assistant. Suggest 3-5 names from mythology, folklore, or fiction — pick randomly from diverse cultures and pantheons each time (Greek, Norse, Egyptian, Hindu, Chinese, Japanese, Celtic, Mesopotamian, etc.). For each suggestion, give a one-line reason why the name fits an AI assistant (e.g. knowledge, wisdom, communication, protection). Let the user pick one or type their own.
 
-7. **Working directory**: Default to `~/<assistant-name-lowercase>` (e.g. if assistant is "Thoth", default `~/thoth`). Present options: "1. <current dir> (current)  2. ~/<name> (recommended)  3. Custom path". Let the user confirm or change.
+7. **Confirm directory**: Use the **current working directory** as the parent. The bot goes in `<cwd>/<assistant-name-lowercase>/`. Confirm with the user:
+   - "Your bot will be created at: `<cwd>/<name>/`"
+   - "Supervisor will be at: `<cwd>/supervisor/`"
+   - "1. Looks good  2. Let me change the parent directory"
 
-8. **Generate files** in the working directory:
-   - Copy `$CLAUDE_PLUGIN_ROOT/template/CLAUDE.md` → `CLAUDE.md`, fill in all placeholders (assistant name, user name, timezone, language).
+8. **Generate files**:
+   
+   In the **parent directory** (current working directory):
    - Copy `$CLAUDE_PLUGIN_ROOT/supervisor/` → `supervisor/`, run `npm install`.
-   - Generate `ecosystem.config.cjs` with the collected values. Use `<assistant-name-lowercase>` as the `TMUX_SESSION` name and the **supervisor bot token**.
-   - Generate `USER.md` with collected user info (preferred name, timezone, user_id, chat_id, brief intro). This is the assistant's reference for who the user is.
+   - Generate `ecosystem.config.cjs` with supervisor bot token, user_id, and `BOTS` set to `"<name>:<name>:<cwd>/<name>"`.
+   
+   In the **bot directory** (`<cwd>/<name>/`):
+   - Copy `$CLAUDE_PLUGIN_ROOT/template/CLAUDE.md` → `CLAUDE.md`, fill in all placeholders (assistant name, user name, timezone, language).
+   - Generate `USER.md` with collected user info (preferred name, timezone, user_id, chat_id, brief intro).
    - Copy `$CLAUDE_PLUGIN_ROOT/start.sh` → `start.sh`, make executable.
    - Create `memory/MEMORY.md` (empty memory index).
    - Create `journal/` directory.

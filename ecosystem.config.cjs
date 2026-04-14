@@ -9,10 +9,12 @@ module.exports = {
       restart_delay: 5000,
       env: {
         SUPERVISOR_BOT_TOKEN: '', // your supervisor bot token
-        TMUX_SESSION: 'bot',
-        WORK_DIR: __dirname,
-        ALLOWED_USERS: '', // your Telegram user_id
-        WATCHDOG_INTERVAL: '60', // seconds, 0 to disable
+        ALLOWED_USERS: '',        // your Telegram user_id
+        WATCHDOG_INTERVAL: '60',  // seconds, 0 to disable
+        // Bot definitions: name:tmux_session:work_dir (comma-separated for multiple bots)
+        // Example single bot:  "thoth:thoth:/home/user/bots/thoth"
+        // Example multi bot:   "thoth:thoth:/home/user/bots/thoth,hermes:hermes:/home/user/bots/hermes"
+        BOTS: '',
       },
     },
   ],
