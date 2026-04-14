@@ -1,6 +1,6 @@
 # Zero-Claw
 
-> v0.2.2
+> v0.2.3
 
 Turn [Claude Code](https://claude.ai/claude-code) into a personal AI assistant on Telegram.
 
