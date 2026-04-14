@@ -53,19 +53,41 @@ Continue the entire upgrade process in that language.
 
 ### Phase 1: Detect
 
-Find the project root. Look for these signals in the current directory and parents:
+**Key concept: project root vs bot directories.** These are DIFFERENT locations:
 
+```
+project-root/                 ← "parent" — where you run the upgrade
+├── ecosystem.config.cjs      ← supervisor config lives HERE
+├── supervisor/               ← supervisor code lives HERE
+├── bot-a/                    ← bot directory (child)
+│   ├── CLAUDE.md
+│   ├── start.sh
+│   ├── memory/
+│   └── journal/
+└── bot-b/                    ← another bot directory (child)
+```
+
+**The current working directory IS the project root.** Supervisor and ecosystem.config.cjs belong here, NOT inside any bot directory.
+
+**Step 1a: Find project-root-level components** in the current directory:
 - `ecosystem.config.cjs` — supervisor config
 - `supervisor/` or `supervisor/index.mjs` — supervisor code
-- Bot directories containing `CLAUDE.md` + `start.sh`
-- `.claude/` or `memory/` or `journal/` directories
 
-If nothing is found, use AskUserQuestion to ask the user to point to their project directory.
+**Step 1b: Find bot directories.** These are subdirectories that contain `CLAUDE.md` + `start.sh`. Also check `ecosystem.config.cjs` BOTS entries for declared bot paths. A bot directory is identified by having CLAUDE.md — it is NEVER the same directory as the project root.
 
-Parse `ecosystem.config.cjs` (or equivalent) to discover:
+If neither ecosystem.config.cjs nor any bot directories are found, use AskUserQuestion to ask the user to confirm this is the right directory.
+
+**Step 1c: Parse ecosystem.config.cjs** (if it exists) to discover:
 - Supervisor bot token (present or not)
 - BOTS entries → list of bot names, sessions, work dirs
 - Any legacy env vars (TMUX_SESSION, WORK_DIR — pre-multi-bot format)
+
+Confirm the detected layout with the user before proceeding:
+```
+Project root: /workspace/test_zero_claw2
+Supervisor:   /workspace/test_zero_claw2/supervisor/
+Bots found:   claude-bot → /workspace/test_zero_claw2/claude-bot/
+```
 
 ### Phase 2: Diagnose all components
 
