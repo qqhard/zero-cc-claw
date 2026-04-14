@@ -12,8 +12,8 @@ module.exports = {
         ALLOWED_USERS: '',        // your Telegram user_id
         WATCHDOG_INTERVAL: '60',  // seconds, 0 to disable
         // Bot definitions: name:tmux_session:work_dir (comma-separated for multiple bots)
-        // Example single bot:  "thoth:thoth:/home/user/bots/thoth"
-        // Example multi bot:   "thoth:thoth:/home/user/bots/thoth,hermes:hermes:/home/user/bots/hermes"
+        // Example single bot:  "thoth:thoth:/home/user/workspace/thoth"
+        // Example multi bot:   "thoth:thoth:/home/user/workspace/thoth,hermes:hermes:/home/user/workspace/hermes"
         BOTS: '',
       },
     },
