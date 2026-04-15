@@ -1,6 +1,6 @@
 # Zero-Claw
 
-> v0.2.3
+> v0.3.0
 
 Turn [Claude Code](https://claude.ai/claude-code) into a personal AI assistant on Telegram.
 
@@ -92,15 +92,18 @@ Send these to your supervisor bot on Telegram:
 | `/send <text>` | Type into the assistant's terminal |
 | `/help` | Show all commands |
 
-## Upgrading
+## Commands
 
-Already have a bot running? Upgrade to the latest Zero-Claw in a Claude Code session:
+Run these in a Claude Code session once the plugin is installed.
 
-```
-/zero-claw:upgrade
-```
+| Command | What it does |
+|---|---|
+| `/zero-claw:setup` | First-run wizard — prereqs, two bots, config, launch, pair |
+| `/zero-claw:add-bot` | Add another agent under an existing parent directory |
+| `/zero-claw:migrate-from-openclaw` | Import an existing OpenClaw workspace — preserves agents, personas, memory, skills, scripts, MCPs; only asks BotFather for a supervisor if none exists |
+| `/zero-claw:upgrade` | Upgrade an existing bot to the latest template without overwriting your persona |
 
-The upgrade wizard detects your current setup, shows what's changed, and lets you choose what to update. It never overwrites your CLAUDE.md personality or custom config — only adds missing sections and replaces infrastructure components (supervisor, start.sh, skills).
+The upgrade wizard detects your current setup, shows what's changed, and lets you choose what to update. It never overwrites your `CLAUDE.md` / `SOUL.md` / `IDENTITY.md` persona or custom config — only adds missing sections and replaces infrastructure components (supervisor, `start.sh`, built-in skills).
 
 ## Extending Your Bot
 
@@ -115,18 +118,23 @@ The upgrade wizard detects your current setup, shows what's changed, and lets yo
 ## Project Structure
 
 ```
-zero-claw/                        (Claude Code plugin)
+zero-claw/                            (Claude Code plugin)
 ├── skills/
-│   ├── setup/SKILL.md            # Interactive setup wizard
-│   └── heartbeat/SKILL.md        # Heartbeat + journaling
+│   ├── setup/                        # /zero-claw:setup
+│   ├── add-bot/                      # /zero-claw:add-bot
+│   ├── migrate-from-openclaw/        # /zero-claw:migrate-from-openclaw
+│   ├── upgrade/                      # /zero-claw:upgrade
+│   └── heartbeat/                    # Heartbeat + journaling
 ├── supervisor/
-│   └── index.mjs                 # Supervisor bot (~180 lines)
+│   └── index.mjs                     # Supervisor bot (~180 lines)
 ├── template/
-│   ├── CLAUDE.md                 # Bot personality template
-│   └── USER.md                   # User profile template
-├── commands/
-│   └── setup.md                  # /zero-claw:setup entry point
-└── start.sh                      # One-line launcher
+│   ├── CLAUDE.md                     # Session rules, heartbeat policy, memory
+│   ├── IDENTITY.md                   # Name, creature, vibe, emoji, avatar
+│   ├── SOUL.md                       # Core truths, boundaries, personality
+│   ├── HEARTBEAT.md                  # Self-editable heartbeat checklist
+│   └── USER.md                       # User profile
+├── commands/                         # Slash-command shortcuts
+└── start.sh                          # One-line launcher
 ```
 
 ## Design Principles
