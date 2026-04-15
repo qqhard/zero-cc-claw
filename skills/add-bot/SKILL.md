@@ -28,6 +28,8 @@ Always present choices as numbered options for the selection bar.
 
 **IMPORTANT — Create tasks first:**
 
+- TaskCreate("Choose language")
+- TaskCreate("Detect parent directory")
 - TaskCreate("Create Telegram bot")
 - TaskCreate("Name the new agent")
 - TaskCreate("Shape agent persona (role, personality, notes)")
@@ -35,13 +37,21 @@ Always present choices as numbered options for the selection bar.
 - TaskCreate("Register with supervisor")
 - TaskCreate("Launch and pair")
 
-1. **Detect parent directory**: Look for `ecosystem.config.cjs` in the current directory or parent. If not found, ask the user where their bots live (the directory containing `supervisor/` and `ecosystem.config.cjs`).
+1. **Language**: Use AskUserQuestion: "What language should we use? / 使用什么语言？"
+   - English
+   - 中文
+   - (a third suggested language based on system locale, e.g. 日本語)
+   - Other — type your own
 
-2. **Create Telegram bot**: Guide the user to create a new bot via @BotFather for this agent. Parse the token from the pasted BotFather response.
+   Continue the wizard in that language.
 
-3. **Name the new agent**: Suggest 3-5 mythology/folklore names (different from existing sibling bots — check parent's `ecosystem.config.cjs` to avoid duplicates). Give a one-line reason for each. Let the user pick or type their own.
+2. **Detect parent directory**: Look for `ecosystem.config.cjs` in the current directory or parent. If not found, ask the user where their bots live (the directory containing `supervisor/` and `ecosystem.config.cjs`).
 
-4. **Shape the persona**: Same three-question flow as the main setup. Use AskUserQuestion with numbered options; always include "Other — type your own":
+3. **Create Telegram bot**: Guide the user to create a new bot via @BotFather for this agent. Parse the token from the pasted BotFather response.
+
+4. **Name the new agent**: Suggest 3-5 mythology/folklore names (different from existing sibling bots — check parent's `ecosystem.config.cjs` to avoid duplicates). Give a one-line reason for each. Let the user pick or type their own.
+
+5. **Shape the persona**: Same three-question flow as the main setup. Use AskUserQuestion with numbered options; always include "Other — type your own":
 
    a. **Core responsibility** — "What's this agent mainly for?" Since this is an additional bot, bias options toward specialists:
       - Research & knowledge companion
@@ -63,16 +73,16 @@ Always present choices as numbered options for the selection bar.
 
    Draft a 2-4 sentence **Personality** paragraph tying name + tone + notes together. Show it and ask "1. Looks good  2. Let me tweak it". Save the three pieces for file generation.
 
-5. **Generate files** in `<parent>/<agent-name-lowercase>/`:
-   - Copy `$CLAUDE_PLUGIN_ROOT/template/CLAUDE.md` → `CLAUDE.md`, fill in agent name, user info (reuse `USER.md` from sibling bot), and the **core responsibility, personality paragraph, notes from user** from step 4.
+6. **Generate files** in `<parent>/<agent-name-lowercase>/`:
+   - Copy `$CLAUDE_PLUGIN_ROOT/template/CLAUDE.md` → `CLAUDE.md`, fill in agent name, user info (reuse `USER.md` from sibling bot), and the **core responsibility, personality paragraph, notes from user** from step 5.
    - Symlink or copy `USER.md` from the first bot (single source of truth for user profile).
    - Copy `$CLAUDE_PLUGIN_ROOT/start.sh` → `start.sh`, make executable.
    - Create `memory/MEMORY.md`, `journal/`.
    - Initialize git repo.
 
-6. **Register with supervisor**: Add the new bot to the parent's `ecosystem.config.cjs` — add a new entry in the apps array with the new bot's tmux session name. Restart supervisor: `pm2 restart supervisor`.
+7. **Register with supervisor**: Add the new bot to the parent's `ecosystem.config.cjs` — add a new entry in the apps array with the new bot's tmux session name. Restart supervisor: `pm2 restart supervisor`.
 
-7. **Launch and pair**:
+8. **Launch and pair**:
    - Start the bot: `tmux new-session -d -s <name> -c <bot-dir> './start.sh'`
    - Wait for init, send "start" via send-keys
    - Configure Telegram plugin with the new bot's token via send-keys
