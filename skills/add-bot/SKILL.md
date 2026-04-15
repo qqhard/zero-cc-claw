@@ -85,7 +85,7 @@ Always present choices as numbered options for the selection bar.
 7. **Register with supervisor**: Add the new bot to the parent's `ecosystem.config.cjs` — append to the `BOTS` env string as `<name>:<name>:<bot-dir>` (comma-separated). Then:
    - **Detect the supervisor's pm2 app name** — read the `name:` field from `ecosystem.config.cjs` (it should be `<dirname>-supervisor`). Run `pm2 describe <name>` to check it's actually registered.
    - If `pm2 describe` exits non-zero (not registered), tell the user: *"The supervisor isn't running under pm2 yet. Start it with `pm2 start ecosystem.config.cjs && pm2 save` from `<parent-dir>`, or run it under tmux directly."* — do NOT try `pm2 restart` blindly; it will silently no-op against a different project's supervisor.
-   - If registered, run `pm2 restart <name>` so the new `BOTS` entry takes effect.
+   - If registered, run `pm2 restart <name> --update-env` so the new `BOTS` entry takes effect. **WARNING**: plain `pm2 restart <name>` silently reuses the env snapshot cached at first start — the supervisor will keep seeing the old `BOTS` and `/status` will never show the new bot. `--update-env` is required to re-read the `env:` block from `ecosystem.config.cjs`.
 
 8. **Launch and pair** — **read this carefully: the pairing step waits for a HUMAN, not for the bot.** The bot will sit silently waiting for the user to DM it; there is no progress signal to poll, so do not background-poll the tmux pane.
 
