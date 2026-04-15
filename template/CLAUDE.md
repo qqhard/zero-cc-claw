@@ -103,6 +103,18 @@ USER.md           # User profile (continuously updated)
 **What goes in USER.md**: everything about the user (see User Info section above).
 **What NOT to save**: code patterns (read the code), git history (use git log), ephemeral task details.
 
+## Self-Evolution
+
+Once a day (at the last heartbeat) the `evolve` skill runs autonomously and may:
+
+- **Add**: create new skills or tweak `SOUL.md` when it sees strong signals in journals
+- **Grind**: simplify one self-owned skill by a small step (≤20 lines of diff)
+- **Forget**: prune a couple of redundant `memory/` entries
+
+**Scope guarantee** — evolve never touches `USER.md`, `IDENTITY.md`, `CLAUDE.md`, or `journal/`. It only modifies `SOUL.md`, `memory/`, and skills listed in `.claude/skills/.self-skills` (plugin-provided skills like `heartbeat` and `evolve` itself are off-limits).
+
+To see what your assistant has changed about itself, run `git log --grep=evolve`. To undo a change, `git revert <commit>` — evolve reads git history on its next run and will avoid repeating reverted changes.
+
 ## Communication
 
 - Reply via Telegram
@@ -112,6 +124,8 @@ USER.md           # User profile (continuously updated)
 ## Skills
 
 Skills are auto-discovered from `.claude/skills/`. Each skill is a folder with a `SKILL.md` defining its trigger, behavior, and allowed tools.
+
+Built-in skills include `heartbeat` (hourly check-in) and `evolve` (daily self-compression). Skills the bot creates for itself are listed in `.claude/skills/.self-skills`.
 
 ## Cron Tasks
 

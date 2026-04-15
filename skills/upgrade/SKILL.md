@@ -110,7 +110,12 @@ Components to check:
 
 **d) start.sh** (for each bot) — check for: TELEGRAM_STATE_DIR export, --project-dir flag.
 
-**e) Skills** — check if bot directories have `.claude/skills/heartbeat/`.
+**e) Skills** — check if bot directories have:
+- `.claude/skills/heartbeat/` (core autonomous skill)
+- `.claude/skills/evolve/` (meta-skill — and any other meta-skills in the list; currently just `evolve`)
+- `.claude/skills/.self-skills` (empty registry file — evolve writes to this when it creates a new skill)
+
+For users who only want to refresh the meta-skill layer (not the whole infra), point them at `/zero-claw:upgrade-meta-skill` instead.
 
 **f) Memory/Journal structure** — check if `memory/MEMORY.md`, `journal/`, `USER.md` exist.
 
@@ -167,8 +172,8 @@ Fill placeholders using info from USER.md or existing CLAUDE.md.
 - "Show diff"
 - "Skip"
 
-**Skills** (if missing):
-- "Install heartbeat skill" — copy to `.claude/skills/heartbeat/`
+**Skills** (if any of heartbeat / evolve / .self-skills are missing):
+- "Install all missing skills" — copy each missing one from `$CLAUDE_PLUGIN_ROOT/skills/<name>/` to `.claude/skills/<name>/`, and `touch .claude/skills/.self-skills` if missing
 - "Skip"
 
 **Memory/Journal** (if missing):

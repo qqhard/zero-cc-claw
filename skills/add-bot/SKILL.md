@@ -89,6 +89,8 @@ Always present choices as numbered options for the selection bar.
      2. **Symlink** — single source of truth; both bots see the same file. Pick this only if you want changes to propagate.
    - Copy `$CLAUDE_PLUGIN_ROOT/start.sh` → `start.sh`, make executable. **Verify** the copied file does NOT contain `--project-dir` (older versions had this invalid flag).
    - Create `memory/MEMORY.md`, `journal/`.
+   - **Install meta-skills**: the hardcoded meta-skill list is `["evolve"]`. For each name, copy `$CLAUDE_PLUGIN_ROOT/skills/<name>/` → `<bot-dir>/.claude/skills/<name>/` (mkdir -p as needed).
+   - **Initialize self-skills registry**: `touch <bot-dir>/.claude/skills/.self-skills` (empty, newline-separated). This is where `evolve` appends bot-created skills.
    - Initialize git repo.
 
 7. **Register with supervisor**: Add the new bot to the parent's `ecosystem.config.cjs` — append to the `BOTS` env string as `<name>:<name>:<bot-dir>` (comma-separated). Then:

@@ -158,7 +158,9 @@ Then for each step below: TaskUpdate → `in_progress` when starting, `completed
    - Copy `$CLAUDE_PLUGIN_ROOT/start.sh` → `start.sh`, make executable.
    - Create `memory/MEMORY.md` (empty memory index).
    - Create `journal/` directory.
-   - Initialize git repo. Make sure `memory/`, `journal/`, and `USER.md` are tracked.
+   - **Install meta-skills**: the hardcoded meta-skill list is `["evolve"]`. For each name in that list, copy `$CLAUDE_PLUGIN_ROOT/skills/<name>/` → `<bot-dir>/.claude/skills/<name>/` (mkdir -p as needed). Meta-skills are bundled by default — bots should never ship without them.
+   - **Initialize self-skills registry**: `touch <bot-dir>/.claude/skills/.self-skills` (plain text file, newline-separated skill names). Starts empty. This registry is where `evolve` appends new self-created skills; plugin-provided skills like `evolve` itself are NOT listed here.
+   - Initialize git repo. Make sure `memory/`, `journal/`, `USER.md`, and `.claude/skills/` are tracked.
    - If `.zero-claw-setup.json` exists in cwd, delete it — setup state is no longer needed.
 
 11. **Launch bot in background**:

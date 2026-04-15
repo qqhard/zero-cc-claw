@@ -8,11 +8,15 @@ Each heartbeat, go through the items below. Skip anything that doesn't apply rig
 
 - Send a brief online status to Telegram (plain text, no emoji)
 - Review recent conversation for notable events
-- Write events to `journal/YYYY-MM-DD.md`
+- Write events to `journal/YYYY-MM-DD.md`. Tag each entry with skills that triggered — format: `- HH:MM event text (skills: x, y)`. This feeds evolve's usage signal.
 
 ## Proactive checks (rotate — not every heartbeat, every few)
 
 - (add items here — e.g. "check inbox for urgent unread", "check calendar for events in next 24h", "git status on active projects")
+
+## Last heartbeat of the day
+
+- After journal/memory consolidation, run the `evolve` skill — it handles skill/SOUL/memory self-compression on its own budget.
 
 ## Do NOT disturb
 
