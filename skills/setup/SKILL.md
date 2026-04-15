@@ -38,12 +38,13 @@ When the user must paste something (bot token, user ID), ask for the paste direc
 
 Check if `<cwd>/.zero-claw-setup.json` exists. If it does, this is a **resumed setup** — read the file, pre-fill all previously collected values, and skip completed steps. Greet the user with "Welcome back! Picking up where you left off." and show what's already configured vs. what's still needed.
 
-Call TaskCreate 11 times to create all tasks. Do this immediately, before greeting the user or asking any questions. For resumed setups, mark already-completed tasks as `completed` right away:
+Call TaskCreate 12 times to create all tasks. Do this immediately, before greeting the user or asking any questions. For resumed setups, mark already-completed tasks as `completed` right away:
 
 - TaskCreate("Choose language")
 - TaskCreate("Check prerequisites (tmux, node, pm2, bun)")
 - TaskCreate("Check Telegram plugin")
 - TaskCreate("Name your assistant")
+- TaskCreate("Shape assistant persona (role, personality, notes)")
 - TaskCreate("Create two Telegram bots (main + supervisor)")
 - TaskCreate("Get Telegram user ID")
 - TaskCreate("Collect user info (name, timezone)")
@@ -79,7 +80,29 @@ Then for each step below: TaskUpdate → `in_progress` when starting, `completed
 
 4. **Name your assistant**: Ask the user to name their assistant. Suggest 3-5 names from mythology, folklore, or fiction — pick randomly from diverse cultures and pantheons each time (Greek, Norse, Egyptian, Hindu, Chinese, Japanese, Celtic, Mesopotamian, etc.). For each suggestion, give a one-line reason why the name fits an AI assistant (e.g. knowledge, wisdom, communication, protection). Let the user pick one or type their own. Save the chosen name — it will be used to suggest Telegram bot usernames next.
 
-5. **Create two Telegram bots**: You need two bots. Explain why:
+5. **Shape the persona**: Now that the assistant has a name, give it a personality. Ask three questions in sequence (use AskUserQuestion with numbered options, always include "Other — type your own"):
+
+   a. **Core responsibility** — "What's this assistant mainly for?" Offer options tailored to typical uses:
+      - General life assistant (chat, reminders, errands)
+      - Research & knowledge companion
+      - Writing & editing partner
+      - Coding & engineering sidekick
+      - Productivity & task manager
+      - Other (type your own)
+
+   b. **Personality preference** — "How should they feel to talk to?" Offer flavors inspired by the chosen name when possible (e.g. if Thoth, lean scholarly; if Loki, lean playful). Options like:
+      - Warm and encouraging
+      - Formal and precise
+      - Playful and witty
+      - Calm and contemplative
+      - Blunt and efficient
+      - Other (type your own)
+
+   c. **Anything else** — Free-form: "Anything else you want them to know or embody? (can be skipped)" Short paragraph, hobbies to share, inside jokes, values, etc.
+
+   Based on these answers, draft a 2-4 sentence **Personality** paragraph that ties together the name's cultural/mythological background, chosen tone, and user's notes. Show the draft and ask "1. Looks good  2. Let me tweak it". Save the final three pieces (core responsibility, personality paragraph, user notes) — they'll be written into CLAUDE.md at generation time.
+
+6. **Create two Telegram bots**: You need two bots. Explain why:
    - **Main bot** — your assistant's face, for daily conversation.
    - **Supervisor bot** — remote control for when the main bot is unresponsive. Lets you restart, check status, view logs.
 
@@ -100,26 +123,26 @@ Then for each step below: TaskUpdate → `in_progress` when starting, `completed
 
    After collecting each token, confirm back: "✓ Main bot token: `<first 8 chars>...` — @username" (or "✓ Supervisor bot token: ...").
 
-6. **User ID**: Ask the user to message [@userinfobot](https://t.me/userinfobot) on Telegram. They can paste the entire reply — extract the numeric `Id` field yourself. Same skip option applies — save state if skipped.
+7. **User ID**: Ask the user to message [@userinfobot](https://t.me/userinfobot) on Telegram. They can paste the entire reply — extract the numeric `Id` field yourself. Same skip option applies — save state if skipped.
 
-7. **User info**:
+8. **User info**:
    - **Preferred name**: Ask "How should your assistant address you?" — this is NOT their real name, it's what they want to be called (e.g. "Boss", "Captain", a nickname, a title, or just their first name). Auto-detect their real name from Telegram/system as a suggestion, but let them choose freely.
    - **Timezone**: Ask for timezone (e.g. `Asia/Singapore`). Try to auto-detect from system (`timedatectl` or `TZ` env) and offer as default.
-   - **Brief intro** (optional): Ask if there's anything else the assistant should know — role, interests, work context. Keep it short, 1-2 sentences is fine. Can be skipped.
+   - **Brief intro** (optional): Ask if there's anything else the assistant should know about the user — role, interests, work context. Keep it short, 1-2 sentences is fine. Can be skipped. (This is about the *user*, different from the persona notes collected in step 5.)
 
-8. **Confirm directory**: Use the **current working directory** as the parent. The bot goes in `<cwd>/<assistant-name-lowercase>/`. Confirm with the user:
+9. **Confirm directory**: Use the **current working directory** as the parent. The bot goes in `<cwd>/<assistant-name-lowercase>/`. Confirm with the user:
    - "Your bot will be created at: `<cwd>/<name>/`"
    - "Supervisor will be at: `<cwd>/supervisor/`"
    - "1. Looks good  2. Let me change the parent directory"
 
-9. **Generate files**:
+10. **Generate files**:
    
    In the **parent directory** (current working directory):
    - Copy `$CLAUDE_PLUGIN_ROOT/supervisor/` → `supervisor/`, run `npm install`.
    - Generate `ecosystem.config.cjs` with supervisor bot token, user_id, and `BOTS` set to `"<name>:<name>:<cwd>/<name>"`. **The pm2 app name MUST be `<dirname>-supervisor`** where `<dirname>` is the project root directory name (e.g. if cwd is `/home/user/my-project`, use `my-project-supervisor`). Do NOT use the assistant name — a project can have multiple bots but only one supervisor. Before finalizing, run `pm2 jlist` to check for name collisions; if the name is taken, append a suffix or ask the user.
    
    In the **bot directory** (`<cwd>/<name>/`):
-   - Copy `$CLAUDE_PLUGIN_ROOT/template/CLAUDE.md` → `CLAUDE.md`, fill in all placeholders (assistant name, user name, timezone, language).
+   - Copy `$CLAUDE_PLUGIN_ROOT/template/CLAUDE.md` → `CLAUDE.md`, fill in all placeholders (assistant name, user name, timezone, language, **core responsibility, personality paragraph, notes from user** from step 5).
    - Generate `USER.md` with collected user info (preferred name, timezone, user_id, chat_id, brief intro).
    - Copy `$CLAUDE_PLUGIN_ROOT/start.sh` → `start.sh`, make executable.
    - Create `memory/MEMORY.md` (empty memory index).
@@ -127,7 +150,7 @@ Then for each step below: TaskUpdate → `in_progress` when starting, `completed
    - Initialize git repo. Make sure `memory/`, `journal/`, and `USER.md` are tracked.
    - If `.zero-claw-setup.json` exists in cwd, delete it — setup state is no longer needed.
 
-10. **Launch bot in background**:
+11. **Launch bot in background**:
     - Start supervisor: `pm2 start ecosystem.config.cjs && pm2 save` (the pm2 name will be `<assistant-name>-supervisor`)
     - Create tmux session and start the bot in the background:
       ```bash
@@ -148,7 +171,7 @@ Then for each step below: TaskUpdate → `in_progress` when starting, `completed
       ```
     - Tell the user: "Your bot is starting up. You can watch it with: `tmux attach -t <name>`"
 
-11. **Pair Telegram**:
+12. **Pair Telegram**:
     1. Tell the user: "Open Telegram and send any message (e.g. 'hello') to your main bot @xxx_bot"
     2. Wait for the user to confirm. Two possible outcomes:
        - **Bot replies normally** → already paired, no further action needed
