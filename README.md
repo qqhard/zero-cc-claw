@@ -16,6 +16,8 @@ In a Claude Code session:
 
 The setup wizard handles everything interactively — prerequisites, Telegram bots, config, launch, and pairing.
 
+**Coming from OpenClaw?** Run `/zero-claw:migrate-from-openclaw` instead of `setup` — one command ports over your agents, personas, memory, skills, scripts, and MCPs, and only asks BotFather for a supervisor bot if you don't already have one.
+
 ## What Is This
 
 Claude Code is already a mature, secure, and intelligent coding agent — tool use, code execution, file I/O, MCP integrations, all built in and continuously improving. The [Telegram channel plugin](https://github.com/anthropics/claude-plugins-official) lets it receive and reply to messages.
