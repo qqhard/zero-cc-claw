@@ -186,22 +186,24 @@ function capturePane(bot, lines = 50) {
   }
 }
 
-// Extract text appended to `prev` that is now present in `current`.
-// Uses prefix matching: if prev is a prefix (or substring) of current, return
-// whatever follows it. Returns null if no overlap — buffer likely rolled over.
+// Line-level diff: return lines present in `current` that weren't in `prev`.
+// Prefix/substring matching breaks because the TUI's bottom chrome (input box,
+// status line with live time) mutates slightly between captures and middle
+// content grows in-place — there's no single stable anchor. Set-diff on lines
+// filters stable chrome and reports only additions, in original order.
 function extractNewContent(prev, current) {
   if (!prev || !current) return null;
   if (prev === current) return null;
-  if (current.startsWith(prev)) {
-    const tail = current.slice(prev.length).trim();
-    return tail || null;
+  const prevSet = new Set(prev.split('\n').map((l) => l.trimEnd()));
+  const additions = [];
+  for (const raw of current.split('\n')) {
+    const line = raw.trimEnd();
+    if (!line) continue;
+    if (prevSet.has(line)) continue;
+    additions.push(line);
   }
-  const idx = current.indexOf(prev);
-  if (idx >= 0) {
-    const tail = current.slice(idx + prev.length).trim();
-    return tail || null;
-  }
-  return null;
+  if (additions.length === 0) return null;
+  return additions.join('\n');
 }
 
 // --- Parse bot name from command args ---
