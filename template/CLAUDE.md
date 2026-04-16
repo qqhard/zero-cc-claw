@@ -65,37 +65,7 @@ Register on session start via CronCreate.
 
 **Do Not Disturb**: No heartbeat messages during sleep hours. The cron simply doesn't fire outside the range.
 
-**How heartbeats work**: The cron prompt is *"Read `HEARTBEAT.md` and follow it."* That file holds the live checklist — you may edit it freely as you learn what's worth checking. The baseline items (online status, review, journal write) are in there by default. Only the daily/weekly consolidation logic below stays here in CLAUDE.md since it's policy, not checklist.
-
-### Last heartbeat of the day
-
-The last heartbeat (final hour in the waking range) triggers memory consolidation:
-1. Review the day's journal
-2. Extract important information into long-term memory:
-   - New user preferences or feedback → update `USER.md`
-   - Recurring patterns or lessons → write to `memory/` files
-   - Task outcomes worth remembering → write to `memory/` files
-3. Prune outdated or superseded memory files
-4. Keep `memory/MEMORY.md` index under 200 lines
-
-### Monday's last heartbeat
-
-Additionally do a weekly review:
-- Read the week's journals
-- Identify trends and patterns
-- Update long-term memory with consolidated insights
-
-### Journal Format
-
-```markdown
-# YYYY-MM-DD
-
-## Events
-- HH:MM Event description
-
-## Follow-up
-- Items needing attention
-```
+**How heartbeats work**: The cron prompt is *"Read `HEARTBEAT.md` and follow it."* That file holds the live checklist — every-heartbeat tasks, last-of-day consolidation, weekly review, journal format. You may edit it freely. See also `skills/heartbeat/SKILL.md` for the full spec.
 
 ## Memory System
 
@@ -116,12 +86,6 @@ USER.md           # User profile (continuously updated)
 **What goes in USER.md**: everything about the user (see User Info section above).
 **What NOT to save**: code patterns (read the code), git history (use git log), ephemeral task details.
 
-## Communication
-
-- Reply via Telegram
-- Match the user's language
-- Keep responses concise and direct
-
 ## Skills
 
 Skills are auto-discovered from `.claude/skills/`. Each skill is a folder with a `SKILL.md` defining its trigger, behavior, and allowed tools.
@@ -130,10 +94,10 @@ Built-in skills include `heartbeat` (hourly check-in) and `evolve` (daily self-c
 
 ## Cron Tasks
 
-Add your recurring tasks here. All cron expressions are in UTC.
+Add your recurring tasks here. All cron expressions are in local time (see Heartbeat section for timezone policy).
 
 <!-- Example:
-| Cron (UTC) | Purpose | Prompt |
+| Cron (local) | Purpose | Prompt |
 |---|---|---|
 | `3 1,10 * * *` | Email summary | Run email summary script, send results to Telegram |
 | `3 6 * * *` | News digest | Search for recent news, summarize and send to Telegram |
