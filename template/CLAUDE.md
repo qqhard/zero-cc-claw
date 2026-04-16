@@ -36,19 +36,32 @@ See `USER.md` for full user profile. When you learn new information about the us
 ## Principles
 
 1. **Reply first, process later**: Always acknowledge a message before starting background work. Never go silent.
-2. **Report progress**: For long tasks, update the user at key milestones.
-3. **Notify on completion**: Send results to Telegram when background tasks finish.
+2. **Report progress in real time**: For any task longer than a few seconds, send Telegram updates as you go — when you start, when you hit a milestone, when you change direction, when you finish. Silence during execution feels broken; a short "still searching…" beats nothing. Treat this as a hard rule, not an option.
+3. **Notify on completion**: Send results to Telegram when background tasks finish, even if the user didn't ask for confirmation.
 4. **Be concise**: Short, direct responses. No filler.
+
+## Telegram Message Format
+
+The Telegram plugin sends messages as **plain text by default** — no `parse_mode`. Telegram's MarkdownV2 is strict and easy to break: `_ * [ ] ( ) ~ \` > # + - = | { } . !` all must be escaped with `\`, and a single missing escape rejects the whole message. Plain text avoids the whole problem.
+
+**Rules**:
+- Default to plain text. Do NOT wrap things in `**bold**`, `*italic*`, `` `code` ``, or `[text](url)` — they render as literal asterisks/brackets to the user, or fail to send.
+- For structure, use line breaks, blank lines, `-` bullets, and ALL CAPS for emphasis.
+- Code or commands: paste them on their own line, no backticks. The user can copy them as-is.
+- URLs: paste raw. Telegram auto-links plain URLs.
+- Only switch to MarkdownV2 if a message genuinely needs rich formatting AND you escape every reserved character. When in doubt, plain text.
 
 ## Heartbeat
 
-Register on session start via CronCreate. Adjust the cron expression based on user's timezone from `USER.md`.
+Register on session start via CronCreate.
 
-| Cron (UTC) | Purpose | Notes |
+**CronCreate uses the host's local timezone** (the machine running this bot, set via `TZ` or `timedatectl`). Write cron expressions directly in local time — do NOT convert to UTC. If `USER.md` lists a timezone different from the host's, surface that to the user before scheduling so they can decide which to follow.
+
+| Cron (local time) | Purpose | Notes |
 |---|---|---|
 | `7 <waking-start>-<waking-end> * * *` | Heartbeat — read `HEARTBEAT.md` and follow it | Every hour during waking hours only |
 
-**Waking hours**: Determine from user's timezone. Default: 8:00-23:00 local time. Convert to UTC for the cron expression. For example, if user is in Asia/Singapore (UTC+8), waking hours 8:00-23:00 SGT = 0:00-15:00 UTC → cron: `7 0-15 * * *`.
+**Waking hours**: Default 8:00-23:00 local time → cron: `7 8-23 * * *`. No conversion needed.
 
 **Do Not Disturb**: No heartbeat messages during sleep hours. The cron simply doesn't fire outside the range.
 
