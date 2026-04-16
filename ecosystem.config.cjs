@@ -11,6 +11,7 @@ module.exports = {
         SUPERVISOR_BOT_TOKEN: '', // your supervisor bot token
         ALLOWED_USERS: '',        // your Telegram user_id
         WATCHDOG_INTERVAL: '60',  // seconds, 0 to disable
+        MONITOR_INTERVAL: '0',    // seconds between pane-diff pushes (0 = disabled, 30 recommended)
         // Bot definitions: name:tmux_session:work_dir (comma-separated for multiple bots)
         // Example single bot:  "thoth:thoth:/home/user/workspace/thoth"
         // Example multi bot:   "thoth:thoth:/home/user/workspace/thoth,hermes:hermes:/home/user/workspace/hermes"

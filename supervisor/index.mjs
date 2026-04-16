@@ -16,6 +16,10 @@ const ALLOWED_USERS = new Set(
 const START_CMD = process.env.START_CMD || './start.sh';
 const WATCHDOG_INTERVAL = parseInt(process.env.WATCHDOG_INTERVAL || '0');
 const BOOT_DELAY = parseInt(process.env.BOOT_DELAY || '10');
+const MONITOR_INTERVAL = parseInt(process.env.MONITOR_INTERVAL || '0');
+const MONITOR_CAPTURE_LINES = parseInt(
+  process.env.MONITOR_CAPTURE_LINES || '500'
+);
 
 // Parse BOTS: "name:session:dir,name2:session2:dir2"
 // Falls back to legacy single-bot env vars
@@ -182,6 +186,24 @@ function capturePane(bot, lines = 50) {
   }
 }
 
+// Extract text appended to `prev` that is now present in `current`.
+// Uses prefix matching: if prev is a prefix (or substring) of current, return
+// whatever follows it. Returns null if no overlap — buffer likely rolled over.
+function extractNewContent(prev, current) {
+  if (!prev || !current) return null;
+  if (prev === current) return null;
+  if (current.startsWith(prev)) {
+    const tail = current.slice(prev.length).trim();
+    return tail || null;
+  }
+  const idx = current.indexOf(prev);
+  if (idx >= 0) {
+    const tail = current.slice(idx + prev.length).trim();
+    return tail || null;
+  }
+  return null;
+}
+
 // --- Parse bot name from command args ---
 function parseBotArg(ctx) {
   const text = ctx.message.text;
@@ -308,6 +330,56 @@ tg.command('send', async (ctx) => {
   await ctx.reply('Sent');
 });
 
+tg.command('monitor', async (ctx) => {
+  const parts = ctx.message.text.split(/\s+/).slice(1);
+  const action = (parts[0] || 'status').toLowerCase();
+
+  if (action === 'status') {
+    if (monitors.size === 0) {
+      return ctx.reply('Monitor: off\nUsage: /monitor on [bot] [seconds]');
+    }
+    const lines = [...monitors.entries()].map(
+      ([name, { seconds }]) => `${name}: every ${seconds}s`
+    );
+    return ctx.reply('Monitor:\n' + lines.join('\n'));
+  }
+
+  if (action !== 'on' && action !== 'off') {
+    return ctx.reply('Usage: /monitor [on|off|status] [bot] [seconds]');
+  }
+
+  let bot;
+  let seconds;
+  const maybeBot = parts[1];
+  if (maybeBot && getBot(maybeBot)) {
+    bot = getBot(maybeBot);
+    if (action === 'on' && parts[2]) seconds = parseInt(parts[2]);
+  } else if (maybeBot && /^\d+$/.test(maybeBot) && BOTS.length === 1) {
+    bot = BOTS[0];
+    if (action === 'on') seconds = parseInt(maybeBot);
+  } else if (!maybeBot && BOTS.length === 1) {
+    bot = BOTS[0];
+  } else {
+    return ctx.reply(
+      `Specify bot: /monitor ${action} <bot>${action === 'on' ? ' [seconds]' : ''}\nAvailable: ${BOTS.map((b) => b.name).join(', ')}`
+    );
+  }
+
+  if (action === 'on') {
+    const interval =
+      Number.isFinite(seconds) && seconds >= 5
+        ? seconds
+        : DEFAULT_MONITOR_SECONDS;
+    startMonitor(bot, interval);
+    return ctx.reply(`Monitoring ${bot.name} every ${interval}s`);
+  }
+
+  if (stopMonitor(bot)) {
+    return ctx.reply(`Stopped monitoring ${bot.name}`);
+  }
+  return ctx.reply(`${bot.name} was not being monitored`);
+});
+
 tg.command('help', (ctx) => {
   const botHint =
     BOTS.length > 1
@@ -321,6 +393,7 @@ tg.command('help', (ctx) => {
       '/logs - Recent logs (80 lines)\n' +
       '/screen - Current screen\n' +
       '/send <text> - Type into TUI\n' +
+      '/monitor [on|off|status] [bot] [seconds] - Push new pane output\n' +
       '/help - This message' +
       botHint
   );
@@ -346,8 +419,67 @@ if (WATCHDOG_INTERVAL > 0) {
   console.log(`Watchdog enabled, interval: ${WATCHDOG_INTERVAL}s`);
 }
 
+// --- Monitor: push new tmux pane output to Telegram on an interval ---
+// Activated per-bot via the /monitor command; not auto-started.
+const lastCaptures = new Map();
+const monitors = new Map(); // botName → { intervalId, seconds }
+const DEFAULT_MONITOR_SECONDS = MONITOR_INTERVAL > 0 ? MONITOR_INTERVAL : 30;
+
+function pushToUsers(text) {
+  for (const uid of ALLOWED_USERS) {
+    tg.telegram.sendMessage(uid, text).catch(() => {});
+  }
+}
+
+function monitorTick(bot) {
+  if (!isRunning(bot)) return;
+  const current = capturePane(bot, MONITOR_CAPTURE_LINES);
+  if (!current) return;
+  const prev = lastCaptures.get(bot.name);
+  lastCaptures.set(bot.name, current);
+  const diff = extractNewContent(prev, current);
+  if (!diff) return;
+  const body = diff.length > 3500 ? '...' + diff.slice(-3500) : diff;
+  const prefix = BOTS.length > 1 ? `[${bot.name}]\n` : '';
+  pushToUsers(prefix + body);
+}
+
+function startMonitor(bot, seconds) {
+  stopMonitor(bot);
+  // Seed baseline so the first tick doesn't dump the whole screen as "new".
+  const initial = capturePane(bot, MONITOR_CAPTURE_LINES);
+  if (initial) lastCaptures.set(bot.name, initial);
+  const intervalId = setInterval(() => monitorTick(bot), seconds * 1000);
+  monitors.set(bot.name, { intervalId, seconds });
+}
+
+function stopMonitor(bot) {
+  const entry = monitors.get(bot.name);
+  if (!entry) return false;
+  clearInterval(entry.intervalId);
+  monitors.delete(bot.name);
+  lastCaptures.delete(bot.name);
+  return true;
+}
+
+// --- Command menu (makes `/` autocomplete work in Telegram) ---
+const COMMAND_MENU = [
+  { command: 'status', description: 'Show bot status' },
+  { command: 'restart', description: 'Restart bot' },
+  { command: 'start', description: 'Start bot' },
+  { command: 'stop', description: 'Stop bot' },
+  { command: 'logs', description: 'Recent logs (80 lines)' },
+  { command: 'screen', description: 'Current screen' },
+  { command: 'send', description: 'Type text into the bot TUI' },
+  { command: 'monitor', description: 'Toggle periodic pane-diff push' },
+  { command: 'help', description: 'Show help' },
+];
+
 // --- Launch ---
 tg.launch();
+tg.telegram
+  .setMyCommands(COMMAND_MENU)
+  .catch((err) => console.error('setMyCommands failed:', err.message));
 console.log(
   `Supervisor started | bots: ${BOTS.map((b) => `${b.name}@${b.target}`).join(', ')}`
 );
