@@ -73,3 +73,4 @@ zero-claw/
 - Write English code and comments. DESIGN.md is Chinese. INSTALL.md is English.
 - Don't add features that only benefit one user's setup. Keep the template generic.
 - Test with: supervisor bot commands work, Claude Code starts/stops cleanly, memory persists across restarts.
+- Bumping version: update `package.json`, `.claude-plugin/plugin.json`, and `.claude-plugin/marketplace.json` in the same commit. All three must stay in sync.
