@@ -37,7 +37,7 @@ Plugin root is available as `$CLAUDE_PLUGIN_ROOT`. The canonical latest versions
 
 **TaskCreate per component**: each upgradeable component gets its own task for progress tracking.
 
-**Backup before modify**: copy to `<file>.bak.<timestamp>` before any change.
+**Backup via git, not .bak files**: Bot directories are git repos. Before modifying anything, ensure the working tree is clean (commit or stash dirty changes). Each upgrade phase gets its own commit. To undo, `git revert`. Never create `.bak` files.
 
 ## Steps
 
@@ -50,6 +50,16 @@ Use AskUserQuestion: "What language should we use? / 使用什么语言？"
 - (Other — user types their own)
 
 Continue the entire upgrade process in that language.
+
+### Phase 0.5: Git safety
+
+For each directory that will be modified (project root and each bot directory):
+
+1. Check if it's a git repo (`git rev-parse --git-dir`).
+2. If dirty (uncommitted changes), commit them with message `chore: pre-upgrade snapshot` so the user has a clean restore point. If not a git repo, `git init && git add -A && git commit -m "chore: init before upgrade"`.
+3. Record the current HEAD sha — report it to the user: "Restore point: `<sha>` — run `git reset --hard <sha>` to undo everything."
+
+This replaces all `.bak` file logic. Every change is tracked by git.
 
 ### Phase 1: Detect
 
@@ -140,7 +150,7 @@ For each component that needs upgrading, follow this pattern:
 1. **TaskUpdate** → `in_progress`
 2. **Explain** what's different (2-3 lines, concise)
 3. **AskUserQuestion** with component-specific options (see below)
-4. **Apply** the user's choice (backup first if modifying)
+4. **Apply** the user's choice, then `git add <changed files> && git commit -m "upgrade: <component name>"`
 5. **TaskUpdate** → `completed`
 
 #### Component-specific options:
@@ -186,6 +196,6 @@ After all component tasks are done:
 
 1. If supervisor was upgraded and managed by pm2: verify it starts cleanly
 2. For each upgraded bot: check CLAUDE.md has no broken markdown, start.sh is executable
-3. Summarize what was done (one line per component)
-4. Remind user to restart bots: supervisor `/restart` or `tmux send-keys`
-5. AskUserQuestion: "Keep backup files (.bak) or delete them?"
+3. Show `git log --oneline <restore-point-sha>..HEAD` so the user sees every upgrade commit
+4. Remind: "To undo everything: `git reset --hard <restore-point-sha>`. To undo one component: `git revert <commit>`."
+5. Remind user to restart bots: supervisor `/restart` or `tmux send-keys`
