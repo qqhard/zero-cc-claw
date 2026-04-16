@@ -29,7 +29,7 @@ Zero-Claw has three skill categories:
 | Core autonomous | `heartbeat` | Plugin | Refreshed by `/zero-claw:upgrade` |
 | **Meta-skills** | `evolve` | Plugin | Refreshed by **this skill** |
 
-Meta-skills are the self-modification tools — they let the bot operate on its own skills and SOUL. `evolve` is the first. Future candidates: `reflect`, `teach`, `forget`, `clone`.
+Meta-skills are plugin-provided tools the bot uses but cannot modify — they're third-party, with their own release cycle. `evolve` is a self-modification tool (it operates on the bot's self-skills, SOUL, memory). `wiki` is a knowledge-management tool (it operates on a user-chosen vault). They have zero overlap in scope.
 
 ## Meta-skill list
 
@@ -37,6 +37,7 @@ Meta-skills are the self-modification tools — they let the bot operate on its 
 
 ```
 evolve
+wiki
 ```
 
 When Zero-Claw adds a new meta-skill, update this list (one name per line).
@@ -72,14 +73,15 @@ bot-c/evolve     up-to-date
 No per-bot prompting. For every bot with any outdated/missing meta-skill:
 
 1. Backup each existing `SKILL.md` to `SKILL.md.bak.$(date +%Y%m%d-%H%M%S)` before overwriting.
-2. Copy the entire meta-skill folder from `$CLAUDE_PLUGIN_ROOT/skills/<name>/` to `<bot-dir>/.claude/skills/<name>/` (mkdir -p as needed).
-3. Ensure `<bot-dir>/.claude/skills/.self-skills` exists (create empty if missing — this is the registry `evolve` writes to).
+2. Copy the meta-skill folder from `$CLAUDE_PLUGIN_ROOT/skills/<name>/` to `<bot-dir>/.claude/skills/<name>/` (mkdir -p as needed). **Exclude `node_modules/`** when copying — it's not portable across machines.
+3. If the copied skill has a `package.json`, run `npm install --omit=optional` inside `<bot-dir>/.claude/skills/<name>/`. Record the exit status for Phase 4.
+4. Ensure `<bot-dir>/.claude/skills/.self-skills` exists (create empty if missing — this is the registry `evolve` writes to).
 
 Meta-skills have zero user customization, so refresh is safe and doesn't need confirmation.
 
 ## Phase 4 — Verify
 
-Print a summary: `<bot-name>: refreshed <N> meta-skills` or `<bot-name>: already up-to-date`.
+Print a summary: `<bot-name>: refreshed <N> meta-skills` or `<bot-name>: already up-to-date`. If any `npm install` in Phase 3 failed, list the affected `<bot>/<skill>` pairs so the user can retry manually.
 
 Then tell the user:
 

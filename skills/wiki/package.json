@@ -1,0 +1,25 @@
+{
+  "name": "wiki-skill",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "description": "Karpathy-style incremental wiki compiler skill for Claude Code",
+  "bin": {
+    "wiki-graph": "scripts/wiki-graph.mjs",
+    "wiki-index": "scripts/wiki-index.mjs",
+    "wiki-search": "scripts/wiki-search.mjs",
+    "wiki-lint": "scripts/wiki-lint.mjs"
+  },
+  "dependencies": {
+    "@orama/orama": "^3.1.18",
+    "@orama/plugin-data-persistence": "^3.1.18",
+    "@orama/tokenizers": "^3.1.18",
+    "gray-matter": "^4.0.3"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "optionalDependencies": {
+    "@xenova/transformers": "^2.17.2"
+  }
+}

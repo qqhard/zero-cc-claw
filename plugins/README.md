@@ -10,7 +10,9 @@ cp -r plugins/<plugin-name> .claude/skills/
 
 | Plugin | Description |
 |--------|-------------|
-| (coming soon) | Email summary, calendar sync, knowledge base search, etc. |
+| (coming soon) | Email summary, calendar sync, etc. |
+
+Note: `wiki` moved to `skills/wiki/` — it's now a meta-skill, installed by `/upgrade-meta-skill`.
 
 ## Writing a Plugin
 
