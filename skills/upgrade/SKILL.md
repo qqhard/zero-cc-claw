@@ -110,9 +110,9 @@ For each component, compare against the canonical version in `$CLAUDE_PLUGIN_ROO
 
 Components to check:
 
-**a) Supervisor (`supervisor/index.mjs`)** — check for: multi-bot support, watchdog, /screen, /send, BOTS env parsing. Check `supervisor/package.json` dependencies.
+**a) Supervisor (`supervisor/index.mjs`)** — check for: multi-bot support, watchdog (w/ consecutive-failure cap + abandon-and-notify), context-usage auto-restart (`getContextUsagePct`), `/screen`, `/send`, `/context`, BOTS env parsing. Check `supervisor/package.json` dependencies.
 
-**b) ecosystem.config.cjs** — check format: BOTS env var? Legacy single-bot vars? Missing env vars (WATCHDOG_INTERVAL, BOOT_DELAY)? Also check the pm2 app name: if it's just `supervisor` (generic), it should be renamed to `<assistant-name>-supervisor` to avoid collisions with other Zero-Claw projects on the same machine.
+**b) ecosystem.config.cjs** — check format: BOTS env var? Legacy single-bot vars? Missing env vars (WATCHDOG_INTERVAL, MAX_CONSECUTIVE_RESTARTS, CONTEXT_CHECK_INTERVAL, CONTEXT_THRESHOLD, BOOT_DELAY)? Also check the pm2 app name: if it's just `supervisor` (generic), it should be renamed to `<assistant-name>-supervisor` to avoid collisions with other Zero-Claw projects on the same machine.
 
 **b2) pm2 collision check** — run `pm2 jlist` and check if there's already a process named `supervisor` (or the same name). Compare its `cwd` with the current project root. If it belongs to a DIFFERENT project, warn the user and do NOT restart it. Only restart the supervisor that belongs to THIS project (matched by cwd).
 

@@ -14,12 +14,36 @@ const ALLOWED_USERS = new Set(
   (process.env.ALLOWED_USERS || '').split(',').filter(Boolean).map(Number)
 );
 const START_CMD = process.env.START_CMD || './start.sh';
-const WATCHDOG_INTERVAL = parseInt(process.env.WATCHDOG_INTERVAL || '0');
+const WATCHDOG_INTERVAL = parseInt(process.env.WATCHDOG_INTERVAL ?? '60');
+const MAX_CONSECUTIVE_RESTARTS = parseInt(
+  process.env.MAX_CONSECUTIVE_RESTARTS ?? '5'
+);
 const BOOT_DELAY = parseInt(process.env.BOOT_DELAY || '10');
 const MONITOR_INTERVAL = parseInt(process.env.MONITOR_INTERVAL || '0');
 const MONITOR_CAPTURE_LINES = parseInt(
   process.env.MONITOR_CAPTURE_LINES || '500'
 );
+// Context check: kill + restart when Claude's context usage exceeds threshold.
+// Indicator parsed from TUI is "Context left until auto-compact: X%".
+const CONTEXT_CHECK_INTERVAL = parseInt(
+  process.env.CONTEXT_CHECK_INTERVAL ?? '86400'
+);
+const CONTEXT_THRESHOLD = parseInt(process.env.CONTEXT_THRESHOLD ?? '50');
+// How long to reuse a /context result before re-querying. Running /context
+// adds a line to the bot's TUI history, so we don't want to hit it on every
+// /status call. Daily context-check uses the same cache with a 24h interval,
+// so it always forces a fresh query naturally.
+const CONTEXT_CACHE_SECONDS = parseInt(
+  process.env.CONTEXT_CACHE_SECONDS ?? '300'
+);
+// How long to wait after sending `/context` for Claude's TUI to finish
+// rendering the usage block. /context takes a few seconds in practice.
+const CONTEXT_QUERY_WAIT_MS = parseInt(
+  process.env.CONTEXT_QUERY_WAIT_MS ?? '4000'
+);
+// Grace window after a deliberate restart: watchdog skips the bot so the
+// in-flight boot doesn't get mistaken for a crash.
+const RESTART_GRACE_SECONDS = 30;
 
 // Parse BOTS: "name:session:dir,name2:session2:dir2"
 // Falls back to legacy single-bot env vars
@@ -242,6 +266,9 @@ tg.command('restart', async (ctx) => {
   const msg = await ctx.reply(`Restarting ${bot.name}...`);
   await killProcess(bot);
   startProcess(bot);
+  markRestart(bot.name);
+  resetRestartState(bot.name);
+  invalidateContextCache(bot.name);
   await ctx.telegram.editMessageText(
     ctx.chat.id,
     msg.message_id,
@@ -255,6 +282,8 @@ tg.command('stop', async (ctx) => {
   if (!bot) return;
   if (!isRunning(bot)) return ctx.reply(`${bot.name} not running`);
   await killProcess(bot);
+  resetRestartState(bot.name);
+  invalidateContextCache(bot.name);
   await ctx.reply(`${bot.name} stopped`);
 });
 
@@ -263,6 +292,9 @@ tg.command('start', async (ctx) => {
   if (!bot) return;
   if (isRunning(bot)) return ctx.reply(`${bot.name} already running`);
   startProcess(bot);
+  markRestart(bot.name);
+  resetRestartState(bot.name);
+  invalidateContextCache(bot.name);
   await ctx.reply(`${bot.name} started`);
 });
 
@@ -272,21 +304,63 @@ tg.command('status', async (ctx) => {
   const arg = text.split(/\s+/)[1];
 
   if (!arg && BOTS.length > 1) {
-    const lines = BOTS.map((b) => {
-      const pid = getClaudePid(b);
-      return `${b.name}: ${pid ? `running (PID ${pid})` : 'stopped'}`;
-    });
-    return ctx.reply(lines.join('\n'));
+    const lines = await Promise.all(BOTS.map((b) => formatStatusLine(b)));
+    return ctx.replyWithHTML(lines.join('\n\n'));
   }
 
   const bot = parseBotArg(ctx);
   if (!bot) return;
-  const claudePid = getClaudePid(bot);
-  const parts = [claudePid ? `${bot.name}: running` : `${bot.name}: stopped`];
-  if (claudePid) parts.push(`PID: ${claudePid}`);
-  if (!sessionExists(bot)) parts.push('tmux session not found');
-  await ctx.reply(parts.join('\n'));
+  await ctx.replyWithHTML(await formatStatusLine(bot));
 });
+
+function escapeHtml(s) {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+function formatTokens(n) {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
+  return String(n);
+}
+
+async function formatContextLine(bot) {
+  const usage = await getContextUsage(bot);
+  if (!usage) return '<i>context: query failed</i>';
+  const age = Math.round((Date.now() - usage.at) / 1000);
+  const tokens = `${formatTokens(usage.tokens)} / ${formatTokens(usage.limit)}`;
+  const model = usage.model
+    ? `\nmodel: <code>${escapeHtml(usage.model)}</code>`
+    : '';
+  return (
+    `context: <b>${tokens}</b> (${usage.pct}%) <i>· ${age}s ago · restart &gt;${CONTEXT_THRESHOLD}%</i>` +
+    model
+  );
+}
+
+async function formatStatusLine(bot) {
+  const claudePid = getClaudePid(bot);
+  const header = claudePid
+    ? `<b>${escapeHtml(bot.name)}</b> — running`
+    : `<b>${escapeHtml(bot.name)}</b> — <b>stopped</b>`;
+  const parts = [header];
+  if (claudePid) parts.push(`pid: <code>${claudePid}</code>`);
+  if (!sessionExists(bot)) parts.push('<i>tmux session not found</i>');
+  const state = getRestartState(bot.name);
+  if (state.abandoned) {
+    parts.push(
+      `<i>auto-restart disabled (${MAX_CONSECUTIVE_RESTARTS} failures) — /start ${escapeHtml(bot.name)} to re-enable</i>`
+    );
+  } else if (state.failures > 0) {
+    parts.push(
+      `<i>recent restarts: ${state.failures}/${MAX_CONSECUTIVE_RESTARTS}</i>`
+    );
+  }
+  if (claudePid) parts.push(await formatContextLine(bot));
+  return parts.join('\n');
+}
 
 tg.command('logs', async (ctx) => {
   const bot = parseBotArg(ctx);
@@ -388,10 +462,10 @@ tg.command('help', (ctx) => {
       ? `\n\nBots: ${BOTS.map((b) => b.name).join(', ')}\nAdd bot name after command, e.g. /status ${BOTS[0].name}`
       : '';
   ctx.reply(
-    '/restart - Restart bot\n' +
+    '/status - Status, restart counter, context usage\n' +
+      '/restart - Restart bot\n' +
       '/stop - Stop bot\n' +
-      '/start - Start bot\n' +
-      '/status - Status (all bots if no arg)\n' +
+      '/start - Start bot (re-enables auto-restart)\n' +
       '/logs - Recent logs (80 lines)\n' +
       '/screen - Current screen\n' +
       '/send <text> - Type into TUI\n' +
@@ -404,21 +478,175 @@ tg.command('help', (ctx) => {
 tg.on('text', (ctx) => ctx.reply('Send /help for available commands'));
 
 // --- Watchdog ---
+// State: consecutive failed restart attempts per bot. After
+// MAX_CONSECUTIVE_RESTARTS, we stop auto-restarting and tell the user to
+// investigate. Manual /start or /restart clears the state.
+const restartState = new Map(); // botName → { failures, abandoned }
+const lastRestartAt = new Map();
+
+function getRestartState(name) {
+  let s = restartState.get(name);
+  if (!s) {
+    s = { failures: 0, abandoned: false };
+    restartState.set(name, s);
+  }
+  return s;
+}
+
+function resetRestartState(name) {
+  const s = getRestartState(name);
+  s.failures = 0;
+  s.abandoned = false;
+}
+
+function markRestart(name) {
+  lastRestartAt.set(name, Date.now());
+}
+
+function inRestartGrace(name) {
+  const t = lastRestartAt.get(name);
+  return t && Date.now() - t < RESTART_GRACE_SECONDS * 1000;
+}
+
 if (WATCHDOG_INTERVAL > 0) {
   setInterval(() => {
     for (const bot of BOTS) {
-      if (!isRunning(bot) && sessionExists(bot)) {
-        console.log(`[watchdog] ${bot.name} died, restarting...`);
-        startProcess(bot);
-        for (const uid of ALLOWED_USERS) {
-          tg.telegram
-            .sendMessage(uid, `${bot.name} crashed — auto-restarted`)
-            .catch(() => {});
-        }
+      if (inRestartGrace(bot.name)) continue;
+      if (!sessionExists(bot)) continue;
+
+      const state = getRestartState(bot.name);
+
+      if (isRunning(bot)) {
+        if (state.failures > 0) state.failures = 0;
+        continue;
       }
+
+      if (state.abandoned) continue;
+
+      if (state.failures >= MAX_CONSECUTIVE_RESTARTS) {
+        state.abandoned = true;
+        console.log(
+          `[watchdog] ${bot.name} dead after ${MAX_CONSECUTIVE_RESTARTS} attempts — giving up`
+        );
+        pushToUsers(
+          `⚠️ ${bot.name} crashed ${MAX_CONSECUTIVE_RESTARTS} times in a row. Auto-restart disabled. Investigate, then /start ${bot.name} to re-enable.`
+        );
+        continue;
+      }
+
+      state.failures += 1;
+      console.log(
+        `[watchdog] ${bot.name} died, restarting (${state.failures}/${MAX_CONSECUTIVE_RESTARTS})`
+      );
+      startProcess(bot);
+      markRestart(bot.name);
+      invalidateContextCache(bot.name);
+      pushToUsers(
+        `${bot.name} crashed — auto-restarted (${state.failures}/${MAX_CONSECUTIVE_RESTARTS})`
+      );
     }
   }, WATCHDOG_INTERVAL * 1000);
-  console.log(`Watchdog enabled, interval: ${WATCHDOG_INTERVAL}s`);
+  console.log(
+    `Watchdog enabled, interval: ${WATCHDOG_INTERVAL}s, max restarts: ${MAX_CONSECUTIVE_RESTARTS}`
+  );
+}
+
+// --- Context usage ---
+// We inject `/context` into the bot's TUI and parse Claude Code's own
+// breakdown (e.g. `39.3k/1m tokens (4%)`). This is authoritative — Claude
+// reports the true model-specific limit, which the session JSONL's `model`
+// field strips (e.g. `claude-opus-4-7[1m]` is logged as `claude-opus-4-7`),
+// so any JSONL-based computation has no way to tell 200K apart from 1M.
+//
+// Side effect: each query adds a `/context` line to the bot's TUI history.
+// We cache results for CONTEXT_CACHE_SECONDS to avoid spamming the pane on
+// every /status call.
+const contextCache = new Map(); // botName → { pct, tokens, limit, model, at }
+
+function parseTokenCount(val, suffix) {
+  const n = parseFloat(val);
+  const s = (suffix || '').toLowerCase();
+  if (s === 'k') return Math.round(n * 1000);
+  if (s === 'm') return Math.round(n * 1_000_000);
+  return Math.round(n);
+}
+
+async function queryContext(bot) {
+  try {
+    execFileSync('tmux', ['send-keys', '-t', bot.target, '-l', '/context'], {
+      timeout: 10_000,
+    });
+    execFileSync('tmux', ['send-keys', '-t', bot.target, 'Enter'], {
+      timeout: 10_000,
+    });
+  } catch {
+    return null;
+  }
+  await sleep(CONTEXT_QUERY_WAIT_MS);
+  const pane = capturePane(bot, MONITOR_CAPTURE_LINES);
+  if (!pane) return null;
+  const m = pane.match(
+    /(\d+(?:\.\d+)?)([kmKM]?)\s*\/\s*(\d+(?:\.\d+)?)([kmKM]?)\s+tokens\s*\((\d+(?:\.\d+)?)%\)/
+  );
+  if (!m) return null;
+  const tokens = parseTokenCount(m[1], m[2]);
+  const limit = parseTokenCount(m[3], m[4]);
+  const pct = parseFloat(m[5]);
+  const modelMatch = pane.match(/claude-[a-z0-9-]+(?:\[[0-9a-z]+\])?/i);
+  return {
+    tokens,
+    limit,
+    pct,
+    model: modelMatch ? modelMatch[0] : null,
+    at: Date.now(),
+  };
+}
+
+async function getContextUsage(bot, { force = false } = {}) {
+  if (!force) {
+    const cached = contextCache.get(bot.name);
+    if (cached && Date.now() - cached.at < CONTEXT_CACHE_SECONDS * 1000) {
+      return cached;
+    }
+  }
+  const result = await queryContext(bot);
+  if (!result) return contextCache.get(bot.name) || null;
+  contextCache.set(bot.name, result);
+  return result;
+}
+
+function invalidateContextCache(botName) {
+  contextCache.delete(botName);
+}
+
+if (CONTEXT_CHECK_INTERVAL > 0) {
+  setInterval(async () => {
+    for (const bot of BOTS) {
+      if (inRestartGrace(bot.name)) continue;
+      if (!isRunning(bot)) continue;
+      const usage = await getContextUsage(bot, { force: true });
+      if (!usage) {
+        console.log(`[context] ${bot.name}: query failed, skipping`);
+        continue;
+      }
+      console.log(
+        `[context] ${bot.name}: ${usage.pct}% used (${usage.tokens}/${usage.limit})`
+      );
+      if (usage.pct > CONTEXT_THRESHOLD) {
+        pushToUsers(
+          `${bot.name} context at ${usage.pct}% — restarting for fresh session`
+        );
+        await killProcess(bot);
+        startProcess(bot);
+        markRestart(bot.name);
+        invalidateContextCache(bot.name);
+        resetRestartState(bot.name);
+      }
+    }
+  }, CONTEXT_CHECK_INTERVAL * 1000);
+  console.log(
+    `Context check enabled, interval: ${CONTEXT_CHECK_INTERVAL}s, threshold: >${CONTEXT_THRESHOLD}%`
+  );
 }
 
 // --- Monitor: push new tmux pane output to Telegram on an interval ---
@@ -466,7 +694,7 @@ function stopMonitor(bot) {
 
 // --- Command menu (makes `/` autocomplete work in Telegram) ---
 const COMMAND_MENU = [
-  { command: 'status', description: 'Show bot status' },
+  { command: 'status', description: 'Status, restart counter, context usage' },
   { command: 'restart', description: 'Restart bot' },
   { command: 'start', description: 'Start bot' },
   { command: 'stop', description: 'Stop bot' },
