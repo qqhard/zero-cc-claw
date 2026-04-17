@@ -21,7 +21,7 @@ Periodic keep-alive and the owner of memory maintenance + wiki orchestration. Ev
 2. Review the last hour of conversation. For each notable event, write to `journal/YYYY-MM-DD.md` using the format in "Journal Format" below. Tag each entry with:
    - `(skills: x, y)` — which skills the event involved. Feeds evolve's retire signal.
    - `(candidate-skill: <slug>)` — if the work you just did felt like it could be a reusable skill (you wrote a temp script, you ran a multi-step research flow that might recur, you solved something you've solved before). Feeds evolve's upgrade signal. Optional; only annotate when you actually notice the signal in the moment.
-3. If a memory-worthy moment happened in the last hour (user stated a new preference, a pattern clarified itself, a feedback that belongs in long-term memory), write a `memory/*.md` entry now. Don't wait for EOD. Update `memory/MEMORY.md` index.
+3. If a memory-worthy moment happened in the last hour (user stated a new preference, a pattern clarified itself, a feedback that belongs in long-term memory), write a `memory/*.md` entry now with the frontmatter schema from `CLAUDE.md`'s "Memory System" section — `name`, `description`, `type` (user / feedback / project / reference). Don't wait for EOD. Update `memory/MEMORY.md` index with a one-line pointer.
 4. **If the bot has a wiki vault configured** (look in `CLAUDE.md` for the vault path), do the wiki loop — silent when nothing qualifies:
    - Scan the last hour for Capture triggers: a finished `learn` session's knowledge output, a multi-turn problem resolution worth reusing, user-dropped raw files in the vault, or an explicit "save this" ask. Run `llm-wiki` **Capture** → **Ingest** for each captured raw. One Capture per focused topic, not per chat.
    - Run `llm-wiki` **Recompile** (§2). Cheap; no-op when nothing is dirty.
@@ -33,9 +33,10 @@ Triggered at the final hour in the waking range. Run in this order — each step
 
 1. **Review today's journal.** Look for notable events, recurring themes, feedback, corrections.
 2. **Memory maintenance** (heartbeat's core EOD job):
-   - Distill anything in today's journal that deserves long-term memory (patterns, lessons, feedback, project context) into `memory/*.md`. One idea per file.
+   - Distill anything in today's journal that deserves long-term memory (patterns, lessons, feedback, project context) into `memory/*.md`. One focused idea per file. Each file uses the frontmatter schema in `CLAUDE.md` (`name` / `description` / `type`). Pick type by content: `feedback` for rules about how to behave, `project` for ongoing work context, `reference` for external pointers, `user` for richer context about the user themself.
    - Prune: remove superseded entries; consolidate duplicates. Budget `min(2 files, 5%)` — conservative. An entry earns removal when a newer file already supersedes it, when it's been promoted into a skill, or when it's >90 days old and no recent journal references it.
-   - Keep `memory/MEMORY.md` under 200 lines and pointing only at files that exist.
+   - Keep `memory/MEMORY.md` under 200 lines and pointing only at files that exist. Each line: `- [Title](file.md) — when-relevant hook`.
+   - If an existing memory file lacks frontmatter (older bot, pre-schema), add it on the next edit pass — don't do a one-shot migration sweep.
    - Never remove anything the user explicitly said "remember this" about, unless superseded.
 3. **Run the `evolve` skill.** Evolve reads cleaned memory + journal and decides skill upgrades/retires on its own budget. See `skills/evolve/SKILL.md`. Heartbeat does not second-guess it.
 4. **Wiki EOD pass** (if a vault is configured):

@@ -102,6 +102,37 @@ SOUL.md           # Personality, voice (user-driven; Agent as scribe)
 
 **What NOT to save anywhere**: code patterns (read the code), git history (use git log), ephemeral task details.
 
+### `memory/*.md` frontmatter
+
+Each memory file is a single focused idea with this header, mirroring Claude Code's native auto-memory pattern:
+
+```markdown
+---
+name: <short memory name>
+description: <one-line specific description — used to decide relevance later, be specific>
+type: user | feedback | project | reference
+---
+
+<body — see below>
+```
+
+Types:
+
+- **user** — richer context about this user's role, expertise, working style, goals. Complements the profile card in `USER.md` with running notes the card can't hold.
+- **feedback** — guidance from the user about how to approach work. Body format: the rule, then `**Why:**` and `**How to apply:**` lines so future-you can judge edge cases.
+- **project** — ongoing work, initiatives, bugs, decisions, stakeholder asks. Same body structure as feedback (`**Why:**` + `**How to apply:**`). Convert relative dates to absolute when writing ("next Thursday" → `2026-04-24`).
+- **reference** — pointers to external systems (Linear projects, Grafana dashboards, Slack channels). Short: what's there and when to look.
+
+### `memory/MEMORY.md`
+
+Index only, no content. One line per memory, under ~150 characters each:
+
+```markdown
+- [Memory title](file.md) — one-line hook on when it's relevant
+```
+
+Keep the whole index under 200 lines — it's always loaded. Organize by topic, not chronologically. Update whenever you add / edit / remove a memory file.
+
 ## Skills
 
 Skills are auto-discovered from `.claude/skills/`. Each skill is a folder with a `SKILL.md` defining its trigger, behavior, and allowed tools.
