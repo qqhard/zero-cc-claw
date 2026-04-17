@@ -53,14 +53,6 @@ learn
 
 When Zero-Claw adds a new meta-skill, update this list (one name per line).
 
-**Retired meta-skills** (renamed or removed; migrate away if found in a bot):
-
-```
-wiki -> llm-wiki
-```
-
-For each `old -> new` pair, if `<bot-dir>/.claude/skills/<old>/` exists, tell the user that the skill was renamed, then remove the stale folder after ensuring `<new>/` is in place. If an entry has no `-> new` (pure removal), just remove the stale folder.
-
 ## Phase 1 — Detect bot directories
 
 The current working directory is the **project root** (contains `ecosystem.config.cjs` and/or `supervisor/`). Bot directories are **children** of the project root, each containing `CLAUDE.md` + `start.sh`.
@@ -95,7 +87,6 @@ No per-bot prompting. For every bot with any outdated/missing meta-skill:
 2. Copy the meta-skill folder from `$CLAUDE_PLUGIN_ROOT/skills/<name>/` to `<bot-dir>/.claude/skills/<name>/` (mkdir -p as needed). **Exclude `node_modules/`** when copying — it's not portable across machines.
 3. If the copied skill has a `package.json`, run `npm install --omit=optional` inside `<bot-dir>/.claude/skills/<name>/`. Record the exit status for Phase 4.
 4. Ensure `<bot-dir>/.claude/skills/.self-skills` exists (create empty if missing — this is the registry `evolve` writes to).
-5. Apply retirements from the "Retired meta-skills" list above: after the new skill is in place, remove any stale old-named folder.
 
 Meta-skills have zero user customization, so refresh is safe and doesn't need confirmation.
 
