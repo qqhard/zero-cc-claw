@@ -76,12 +76,18 @@ Scripts live in `<skill>/scripts/`. Run them with `node`.
 
 Use when the bot has accumulated material (chat, journal, memory entry, recurring theme) that deserves to live as a durable raw source in the vault, not just in `memory/`. Capture **writes a new raw .md** and then hands off to Ingest.
 
-**When to Capture** (any of the following):
+**When to Capture** (any of the following). The heartbeat skill checks these at the cadence noted — see `skills/heartbeat/SKILL.md`:
 
-- The user explicitly says "remember this as a note" / "保存下来" / "记到 wiki 原始区".
+*Per-heartbeat (last-hour signals):*
+
+- A `learn` session just wrapped — the consensus/controversy map, deep-dive, 20/80 extraction, and retrieval Q&A are exactly the kind of compounding material the vault exists for.
 - A multi-turn exchange produced a consolidated fact/analysis/decision that you'll want to cite later, and no existing raw or wiki page holds it.
-- `evolve` surfaces a recurring topic in journals/memory that has outgrown the bot-private memory format (structured enough to become a source, queryable to the user, worth cross-linking in the wiki).
+- The user explicitly says "remember this as a note" / "保存下来" / "记到 wiki 原始区".
 - The user sends in free-form content ("here's what I've been thinking about X...") and asks to file it.
+
+*Last-heartbeat-of-day only (fires after `evolve`):*
+
+- `evolve` / EOD distillation surfaces a `memory/` entry or `SOUL.md` phrase that has outgrown private-memory format — structured enough to become a source, queryable to the user, worth cross-linking. Promote to vault here rather than leaving it in private memory.
 
 Do **not** Capture when:
 
@@ -208,13 +214,14 @@ Report both layers together. Ask before fixing.
 
 See `skills/heartbeat/SKILL.md` for the exact flow. The ops themselves (§0-§4 above) don't care who called them.
 
-### Capture triggers worth watching on heartbeat
+### Capture cadence on heartbeat
 
-The heartbeat reviews the last hour of chat + any `journal/` updates and decides whether to Capture. Strong signals include:
+Capture runs at two cadences (see `skills/heartbeat/SKILL.md` for the actual flow):
 
-- A `learn` session just wrapped — the deep-dive, 20/80 extraction, and retrieval Q&A are exactly the kind of compounding material the vault exists for. One Capture per topic, not one per chat.
-- The user and bot worked through a multi-turn problem to a conclusion worth reusing (design decision, investigation result, research synthesis).
-- `evolve` promoted something from `memory/` that's structured enough to become a source rather than a private note.
+- **Every heartbeat** — last-hour signals only: finished `learn` session, multi-turn resolution worth reusing, explicit user ask.
+- **Last heartbeat of the day, after `evolve`** — promote `memory/` or `SOUL.md` entries that distillation + evolve surfaced as vault-worthy.
+
+One Capture per focused topic, not one per chat.
 
 ## Enabling vector search (one-time per vault)
 
