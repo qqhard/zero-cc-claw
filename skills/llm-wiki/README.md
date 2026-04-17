@@ -21,7 +21,7 @@ Milestones:
 - [x] M4 — lint (`wiki-lint`)
 - [x] M5 — vector aux (opt-in `@xenova/transformers`)
 - [x] M6 — embedding model config (`.wiki-cache/config.json`)
-- [x] M7 — heartbeat-driven `Maintain` op
+- [x] M7 — heartbeat orchestration: every-heartbeat Capture + Ingest + Recompile, EOD Lint
 
 ## Install
 
@@ -42,6 +42,8 @@ cd <bot>/.claude/skills/llm-wiki && npm install @xenova/transformers
 ## Vault
 
 `llm-wiki` doesn't assume where your vault lives. On first Ingest / Query, the LLM asks — or you can pre-set a path in the bot's `CLAUDE.md` so it finds it without asking. A vault is any directory with raw `.md` notes; `_wiki/` is created inside it on first Ingest.
+
+Raws are co-maintained: you drop in articles / notes / clips; the bot also Captures durable context (learn sessions, multi-turn resolutions, promotable memory) into `<vault>/captured/YYYY/MM/...` on every heartbeat. Both paths flow through the same Ingest.
 
 **Boundary with `evolve`**: `llm-wiki` never touches the bot's own `skills/`, `SOUL.md`, `USER.md`, `journal/`, or `memory/`. Those are `evolve`'s domain. `llm-wiki` operates only on its configured vault.
 
@@ -81,14 +83,13 @@ Models: `multilingual-e5-small` (default, mixed), `bge-small-zh-v1.5`, `bge-smal
 
 All scripts accept `--json` for machine-readable output.
 
-See [`SKILL.md`](SKILL.md) for the LLM-facing compiler rules (Ingest / Recompile / Query / Lint / Maintain).
+See [`SKILL.md`](SKILL.md) for the LLM-facing compiler rules: Capture / Ingest / Recompile / Query / Lint.
 
 ## Heartbeat integration
 
-If you use zero-claw's `heartbeat` skill, add one bullet to your heartbeat SKILL.md's "Every Heartbeat" (or "Last Heartbeat of the Day" for lower frequency):
+zero-claw's `heartbeat` orchestrates the wiki directly — no dedicated Maintain op:
 
-```markdown
-- If a vault path is configured and contains `_wiki/`, run the `llm-wiki` skill's Maintain operation (§5 in its SKILL.md).
-```
+- **Every heartbeat**: if material qualifies (finished learn session, multi-turn resolution, promotable memory entry), Capture it → Ingest → Recompile. Silent when nothing qualifies.
+- **Last heartbeat of the day**: Lint (mechanical + semantic) and surface findings + `_wiki/inbox.md` orphans in the daily summary.
 
-The Maintain op is intentionally quiet — it produces output only when something needs attention. Auto-Recompile kicks in for small diffs; larger edits and new orphan sources surface as user-visible summaries, never silently applied.
+Auto-recompile is gated to simple cases (≤3 sources, small raw diff). Dense-page rewrites and orphan ingests always surface for user review — never silently applied.

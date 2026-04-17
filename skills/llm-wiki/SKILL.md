@@ -54,8 +54,8 @@ Not in the original gist — ours, for an always-on Telegram-bot use case:
 
 - **Co-maintained raws** — bot can Capture durable context into the vault's raw layer, not just Ingest what the user provides.
 - **`sources:` dependency edge** in page frontmatter → the `meta.json` Makefile knows which pages go stale when a raw changes.
-- **Recompile** op (§2) — incremental invalidation of dirty pages.
-- **Maintain** op (§5) — janitor that runs on heartbeat, silent unless something needs attention.
+- **Recompile** op (§2) — incremental invalidation of dirty pages. Runs every heartbeat (cheap, silent when clean).
+- **Heartbeat cadence** — every hour Capture+Recompile keep the wiki fresh; the last heartbeat of the day runs Lint for health review. No dedicated "Maintain" op; the heartbeat skill orchestrates directly.
 - **BM25 / vector search** via `wiki-search` (analogous to qmd; see §"Enabling vector search").
 
 **Never touch `.wiki-cache/` manually** — scripts own it.
@@ -146,25 +146,31 @@ Self-reference first. You are about to write wiki pages, and the existing wiki i
 
 ### 2. Recompile — invalidate dirty pages
 
-Run when the user says "recompile", "the sources changed", or on heartbeat.
+Run when the user says "recompile", "the sources changed", or **on every heartbeat**. Cheap and silent when nothing is dirty.
 
 1. `node scripts/wiki-graph.mjs <vault>` (refresh raw hashes)
 2. `node scripts/wiki-graph.mjs <vault> --diff --json` → `{dirtyPages, orphanSources}`
-3. For **each** entry in `dirtyPages`:
+3. Classify each dirty page by risk:
+   - **Simple** — ≤3 sources AND the raw diff is small (few lines changed). Auto-Recompile these.
+   - **Dense** — more sources, or the raw diff is large, or the page is long. **Don't silently rewrite** — list these for user review in the next report. Touched in user-invoked `recompile` only if the user explicitly confirms, or passes a force flag.
+4. For **each simple** dirty page:
    - Read the page + every `source:` it declares (current filesystem content).
    - Rewrite only the sections the sources no longer support. Keep what's still accurate. Add what's new. Preserve `related:` links unless the topic changed.
    - Save the page. Bump `updated:`.
    - Stamp it: `node scripts/wiki-graph.mjs <vault> --stamp <page-rel-path>` — this writes the current raw hashes into the page's `sourceHashes`, clearing the dirty flag.
-4. For **orphan sources**: ask the user whether to Ingest them now.
-5. `node scripts/wiki-index.mjs <vault>` (re-index changed pages).
-6. If a page's scope or one-liner changed, update its entry in `_wiki/index.md`.
-7. Append to `_wiki/log.md`:
+5. For **orphan sources** (raw files the wiki doesn't reference yet):
+   - Append them to `_wiki/inbox.md` (appended, never rewritten) if not already listed.
+   - Do **not** auto-Ingest. Surface them in the report so the user can decide.
+6. `node scripts/wiki-index.mjs <vault>` (re-index changed pages) — only if anything changed.
+7. If a page's scope or one-liner changed, update its entry in `_wiki/index.md`.
+8. Append to `_wiki/log.md` **only if something changed**:
    ```
    ## [YYYY-MM-DD HH:MM] recompile | <short reason>
    - pages: [[Page One]], [[Page Two]]
    - sources: notes/a.md, notes/b.md
    ```
-8. Final `--diff` should return empty `dirtyPages`. If any remain, you missed stamping.
+9. Report format: silent if nothing happened. Otherwise: what was auto-recompiled, what dense pages need user review, what orphan sources landed in inbox. Heartbeat callers pass this upward; user-invoked calls show it directly.
+10. Final `--diff` should return empty `dirtyPages` (modulo dense pages deferred to user). If simple pages remain dirty, you missed stamping.
 
 ### 3. Query `<topic>` — look up compiled artifacts
 
@@ -191,22 +197,24 @@ Health-check the wiki. Two layers:
 
 Report both layers together. Ask before fixing.
 
-### 5. Maintain — heartbeat-triggered self-check
+## Heartbeat orchestration
 
-Called by a periodic loop (e.g. `skills/heartbeat`), not by the user directly. Keep it quiet: if nothing needs attention, produce no output.
+`llm-wiki` has no dedicated "Maintain" op. The heartbeat skill is the conductor — every hour it decides whether any of the ops below should fire:
 
-1. `node scripts/wiki-graph.mjs <vault>` (refresh hashes)
-2. `node scripts/wiki-graph.mjs <vault> --diff --json`
-3. `node scripts/wiki-lint.mjs <vault> --json`
-4. Decide:
-   - **Dirty pages with few sources (≤ 3) and small raw diffs**: auto-Recompile (per §2). Log.
-   - **Dirty pages with many sources or large raw diffs**: surface to user — don't silently rewrite dense pages.
-   - **Orphan sources**: never auto-Ingest. Add to a pending list (`_wiki/inbox.md`) — appended, not rewritten — and mention in daily summary.
-   - **Broken links**: surface in daily summary; don't fix silently (could mask real drift).
-   - **Islands**: surface weekly, not every heartbeat.
-5. `node scripts/wiki-index.mjs <vault>` at the end if anything changed.
+| Cadence | Action | Why |
+|---|---|---|
+| Every heartbeat | **Capture** recent durable context (if warranted), then **Ingest** each new raw, then **Recompile** | Keep raws flowing into the vault and wiki pages close to their sources. All three silent when there's nothing to do. |
+| Last heartbeat of the day | **Lint** (mechanical first, semantic when warranted) | One daily sweep for contradictions, broken links, orphan inbox, islands. Surface in the daily summary. |
 
-Principle: Maintain preserves the invariant "the wiki reflects its sources." It doesn't extend scope. Ingest and Query are user-facing; Maintain is janitorial.
+See `skills/heartbeat/SKILL.md` for the exact flow. The ops themselves (§0-§4 above) don't care who called them.
+
+### Capture triggers worth watching on heartbeat
+
+The heartbeat reviews the last hour of chat + any `journal/` updates and decides whether to Capture. Strong signals include:
+
+- A `learn` session just wrapped — the deep-dive, 20/80 extraction, and retrieval Q&A are exactly the kind of compounding material the vault exists for. One Capture per topic, not one per chat.
+- The user and bot worked through a multi-turn problem to a conclusion worth reusing (design decision, investigation result, research synthesis).
+- `evolve` promoted something from `memory/` that's structured enough to become a source rather than a private note.
 
 ## Enabling vector search (one-time per vault)
 
