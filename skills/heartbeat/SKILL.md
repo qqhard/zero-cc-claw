@@ -33,7 +33,7 @@ Triggered at the final hour in the waking range:
 4. Prune outdated or superseded memory files
 5. Keep `memory/MEMORY.md` under 200 lines
 6. Run the `evolve` skill — it will autonomously add/grind/forget across skills, SOUL, and memory per its own budgets.
-7. If this bot has a wiki vault configured (see the bot's `CLAUDE.md` for the vault path), run the `wiki` skill's **Maintain** operation. It recompiles dirty pages whose sources drifted slightly, queues bigger diffs and orphan sources for review, and surfaces broken links — all without asking. Skip silently if no vault is configured.
+7. If this bot has a wiki vault configured (see the bot's `CLAUDE.md` for the vault path), run the `llm-wiki` skill's **Maintain** operation. It recompiles dirty pages whose sources drifted slightly, queues bigger diffs and orphan sources for review, and surfaces broken links — all without asking. Skip silently if no vault is configured.
 
 ## Monday's Last Heartbeat
 

@@ -1,6 +1,8 @@
-# wiki-skill
+# llm-wiki
 
-Karpathy-style incremental wiki compiler as a Claude Code skill.
+Karpathy-style LLM wiki — incremental wiki compiler as a Claude Code skill.
+
+Based on Karpathy's LLM Wiki pattern (https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f): raw notes are immutable sources, `_wiki/` pages are LLM-compiled synthesis artifacts, the LLM itself is the compiler.
 
 - **raw notes = source**
 - **`_wiki/` pages = compiled artifacts**
@@ -23,25 +25,25 @@ Milestones:
 
 ## Install
 
-`wiki` is a meta-skill. In a zero-claw project, it's installed into every bot by:
+`llm-wiki` is a meta-skill. In a zero-claw project, it's installed into every bot by:
 
 ```bash
 /upgrade-meta-skill
 ```
 
-That copies `skills/wiki/` into each `<bot>/.claude/skills/wiki/`. Then run `npm install` inside each bot's skill dir (add to your setup if automating).
+That copies `skills/llm-wiki/` into each `<bot>/.claude/skills/llm-wiki/`. Then run `npm install` inside each bot's skill dir (add to your setup if automating).
 
 For vector search, add the optional dep on bots that need it:
 
 ```bash
-cd <bot>/.claude/skills/wiki && npm install @xenova/transformers
+cd <bot>/.claude/skills/llm-wiki && npm install @xenova/transformers
 ```
 
 ## Vault
 
-`wiki` doesn't assume where your vault lives. On first Ingest / Query, the LLM asks — or you can pre-set a path in the bot's `CLAUDE.md` so it finds it without asking. A vault is any directory with raw `.md` notes; `_wiki/` is created inside it on first Ingest.
+`llm-wiki` doesn't assume where your vault lives. On first Ingest / Query, the LLM asks — or you can pre-set a path in the bot's `CLAUDE.md` so it finds it without asking. A vault is any directory with raw `.md` notes; `_wiki/` is created inside it on first Ingest.
 
-**Boundary with `evolve`**: `wiki` never touches the bot's own `skills/`, `SOUL.md`, `USER.md`, `journal/`, or `memory/`. Those are `evolve`'s domain. `wiki` operates only on its configured vault.
+**Boundary with `evolve`**: `llm-wiki` never touches the bot's own `skills/`, `SOUL.md`, `USER.md`, `journal/`, or `memory/`. Those are `evolve`'s domain. `llm-wiki` operates only on its configured vault.
 
 ## CLI
 
@@ -86,7 +88,7 @@ See [`SKILL.md`](SKILL.md) for the LLM-facing compiler rules (Ingest / Recompile
 If you use zero-claw's `heartbeat` skill, add one bullet to your heartbeat SKILL.md's "Every Heartbeat" (or "Last Heartbeat of the Day" for lower frequency):
 
 ```markdown
-- If a vault path is configured and contains `_wiki/`, run the `wiki` skill's Maintain operation (§5 in its SKILL.md).
+- If a vault path is configured and contains `_wiki/`, run the `llm-wiki` skill's Maintain operation (§5 in its SKILL.md).
 ```
 
 The Maintain op is intentionally quiet — it produces output only when something needs attention. Auto-Recompile kicks in for small diffs; larger edits and new orphan sources surface as user-visible summaries, never silently applied.

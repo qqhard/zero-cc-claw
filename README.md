@@ -106,10 +106,11 @@ Run these in a Claude Code session once the plugin is installed.
 | `/zero-claw:setup` | First-run wizard — prereqs, two bots, config, launch, pair |
 | `/zero-claw:add-bot` | Add another agent under an existing parent directory |
 | `/zero-claw:upgrade` | Upgrade an existing bot to the latest template without overwriting your persona |
-| `/zero-claw:upgrade-meta-skill` | Refresh meta-skills (evolve, wiki) across every bot in the project |
+| `/zero-claw:upgrade-meta-skill` | Refresh meta-skills (evolve, llm-wiki, learn) across every bot in the project |
 | `/zero-claw:migrate-from-openclaw` | Import an existing OpenClaw workspace — preserves agents, personas, memory, skills, scripts, MCPs; only asks BotFather for a supervisor if none exists |
 | `/zero-claw:evolve` | Run the evolve meta-skill manually (normally auto-triggered on the last heartbeat of the day) |
-| `/zero-claw:wiki` | Ingest notes, recompile pages, search, or lint your knowledge vault |
+| `/zero-claw:llm-wiki` | Ingest notes, recompile pages, search, or lint your knowledge vault (Karpathy-style LLM wiki) |
+| `/zero-claw:learn` | Socratic learning mode — 3 consensuses / 3 controversies, layered deep-dive, 20/80, then 5 retrieval questions |
 
 The upgrade wizard detects your current setup, shows what's changed, and lets you choose what to update. It never overwrites your `CLAUDE.md` / `SOUL.md` / `IDENTITY.md` persona or custom config — only adds missing sections and replaces infrastructure components (supervisor, `start.sh`, built-in skills).
 
@@ -134,7 +135,8 @@ zero-claw/                            (Claude Code plugin)
 │   ├── upgrade-meta-skill/           # /zero-claw:upgrade-meta-skill
 │   ├── migrate-from-openclaw/        # /zero-claw:migrate-from-openclaw
 │   ├── evolve/                       # Self-compression meta-skill (copied into each bot)
-│   ├── wiki/                         # Incremental wiki compiler meta-skill (copied into each bot)
+│   ├── llm-wiki/                     # Karpathy-style LLM wiki compiler meta-skill (copied into each bot)
+│   ├── learn/                        # Socratic learning meta-skill (copied into each bot)
 │   └── heartbeat/                    # Hourly cron (autonomous)
 ├── supervisor/
 │   └── index.mjs                     # Supervisor bot

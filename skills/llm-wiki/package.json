@@ -1,9 +1,9 @@
 {
-  "name": "wiki-skill",
+  "name": "llm-wiki-skill",
   "version": "0.1.0",
   "type": "module",
   "private": true,
-  "description": "Karpathy-style incremental wiki compiler skill for Claude Code",
+  "description": "Karpathy-style LLM wiki — incremental wiki compiler skill for Claude Code",
   "bin": {
     "wiki-graph": "scripts/wiki-graph.mjs",
     "wiki-index": "scripts/wiki-index.mjs",

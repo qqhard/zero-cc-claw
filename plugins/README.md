@@ -12,7 +12,7 @@ cp -r plugins/<plugin-name> .claude/skills/
 |--------|-------------|
 | (coming soon) | Email summary, calendar sync, etc. |
 
-Note: `wiki` moved to `skills/wiki/` — it's now a meta-skill, installed by `/upgrade-meta-skill`.
+Note: `llm-wiki` lives at `skills/llm-wiki/` — it's a meta-skill, installed by `/upgrade-meta-skill`.
 
 ## Writing a Plugin
 

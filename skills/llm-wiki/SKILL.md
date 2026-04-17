@@ -1,6 +1,6 @@
 ---
-name: wiki
-description: "Karpathy-style incremental wiki compiler. Use when the user asks to ingest raw notes into their wiki, recompile stale wiki pages, search their knowledge base, or lint wiki consistency. Wiki lives in `<vault>/_wiki/`, raw notes are everything else under the vault."
+name: llm-wiki
+description: "Karpathy-style LLM wiki — an incremental, LLM-compiled knowledge base. Use when the user asks to ingest raw notes into their wiki, recompile stale wiki pages, search their knowledge base, or lint wiki consistency. Wiki lives in `<vault>/_wiki/`, raw notes are everything else under the vault."
 user-invocable: true
 allowed-tools:
   - Read
@@ -11,7 +11,7 @@ allowed-tools:
   - Bash
 ---
 
-# Wiki (meta-skill)
+# LLM-Wiki (meta-skill)
 
 You are the compiler. Raw notes are the source. `_wiki/` pages are the compiled artifact. `meta.json` is the Makefile.
 
