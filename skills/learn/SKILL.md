@@ -34,7 +34,13 @@ Match the user's language throughout — reply in whatever they opened with, don
 1. Read what the user gave you. If it's vague ("I want to learn machine learning"), ask **one** clarifying question — their *current* goal or stuck point. Not a questionnaire. Example:
    > Before we start — what pulled you toward this topic? A specific problem, a project, a conversation? That tells me where to aim.
 
-2. Once you have a usable frame, acknowledge it in one sentence and proceed.
+2. **Before surfacing consensuses/controversies, query the wiki** (if a vault is configured). The user may have learned on adjacent or overlapping topics before; the wiki records what they already understand.
+   - Run `llm-wiki` Query (§3) on the topic and related terms.
+   - Read the top 3-5 matching pages, including `[[links]]` they point at.
+   - Use this to calibrate Phase 1: skip consensuses the user clearly already owns, and aim Phase 2 at the frontier of their current understanding rather than the basics.
+   - If `memory/` contains an abstraction about this user's learning patterns (weak spots, preferred entry points, known-confused concepts), use it. Don't force it if absent.
+
+3. Once you have a usable frame and an honest read of what the user already has, acknowledge it in one sentence ("you already have X, so we'll go from Y") and proceed.
 
 ## Phase 1 — 3 consensuses + 3 controversies
 
@@ -118,7 +124,7 @@ If they skip a question, that *itself* is diagnostic — flag it gently and ask 
 - **Pacing**: one phase at a time. Don't preview Phase 3 while still in Phase 2.
 - **No walls of text**: if your reply exceeds ~8 lines, you're lecturing. Cut it, end with a question.
 - **Honest uncertainty**: if the domain has a controversy you genuinely don't know the answer to, say so. Don't fabricate consensus.
-- **Save to memory (optional)**: if the user commits to continuing the topic, record one memory entry noting the domain, their stated goal, and where Phase 4 left them weak. Future sessions can resume there. Use the standard `memory/` system — one file per learning track.
+- **Output flows to wiki, not memory.** The *knowledge* produced by this session (the consensus/controversy map, the deep-dive, the 20/80 extraction) is world-knowledge — heartbeat's next Capture will promote it into `_wiki/` pages. Don't write it to `memory/`; that's for user-bot relationship content. The user's actual retrieval answers stay in the conversation and journal; `learn` doesn't maintain a separate progress tracker.
 - **Don't summarize at the end**. The user's own Phase 4 answers are the summary. A bot-written recap just lets them off the hook.
 
 ## Anti-patterns

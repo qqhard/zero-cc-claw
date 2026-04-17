@@ -45,7 +45,7 @@ cd <bot>/.claude/skills/llm-wiki && npm install @xenova/transformers
 
 Raws are co-maintained: you drop in articles / notes / clips; the bot also Captures durable context (learn sessions, multi-turn resolutions, promotable memory) into `<vault>/captured/YYYY/MM/...` on every heartbeat. Both paths flow through the same Ingest.
 
-**Boundary with `evolve`**: `llm-wiki` never touches the bot's own `skills/`, `SOUL.md`, `USER.md`, `journal/`, or `memory/`. Those are `evolve`'s domain. `llm-wiki` operates only on its configured vault.
+**Ownership**: `llm-wiki` operates only on its configured vault. The bot's own surfaces are owned elsewhere — `memory/` by `heartbeat`, `.claude/skills/` (self-skills) by `evolve`, `SOUL.md` by the user directly, `USER.md` by the main Agent reactively. `llm-wiki` never reads or writes any of them.
 
 ## CLI
 

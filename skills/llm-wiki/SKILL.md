@@ -41,7 +41,13 @@ Karpathy's original pattern treats raw sources as purely human-curated and immut
 
 **Invariant**: once a raw exists (from either origin), both sides treat it the same — it's compiled into the wiki via Ingest, tracked via `sources:` dep edges, and only edited in rare, deliberate ways. The *origin* is metadata, not a lifecycle distinction.
 
-**Boundary with `evolve`**: `evolve` maintains the bot's own memory (`memory/`, `SOUL.md`, self-skills). `llm-wiki` maintains the shared knowledge vault. When the bot decides something in its private memory has grown to deserve *shared* preservation (durable, queryable, cross-linked), Capture promotes it from `memory/` into the vault — that's where the two skills meet.
+**Ownership map** — three skills, non-overlapping scope:
+
+- `llm-wiki` (this skill) → the shared knowledge vault.
+- `heartbeat` → `memory/` (user-bot relationship content). Heartbeat is who actually calls `llm-wiki` Capture/Recompile/Lint on the right cadence.
+- `evolve` → the self-skill library only (`.claude/skills/` entries listed in `.self-skills`). Not memory, not SOUL.
+
+Capture is where `memory/` and the vault touch: when today's memory maintenance finds content that's world-knowledge rather than user-bot relationship, it gets promoted from `memory/` into the vault via Capture. `SOUL.md` and `USER.md` are user-driven and framework-defined respectively — `llm-wiki` never reads or writes them.
 
 ## Two navigation files (live in `_wiki/`)
 
@@ -76,22 +82,25 @@ Scripts live in `<skill>/scripts/`. Run them with `node`.
 
 Use when the bot has accumulated material (chat, journal, memory entry, recurring theme) that deserves to live as a durable raw source in the vault, not just in `memory/`. Capture **writes a new raw .md** and then hands off to Ingest.
 
+**The boundary rule**: wiki holds **world knowledge** (correct, shareable facts about a domain). `memory/` holds **user-bot relationship content** (preferences, feedback, interaction patterns). If a piece of material would make sense to a third reader who doesn't know this user, it's wiki-class. If it only makes sense in the context of "this user with this bot," it's memory-class.
+
 **When to Capture** (any of the following). The heartbeat skill checks these at the cadence noted — see `skills/heartbeat/SKILL.md`:
 
 *Per-heartbeat (last-hour signals):*
 
-- A `learn` session just wrapped — the consensus/controversy map, deep-dive, 20/80 extraction, and retrieval Q&A are exactly the kind of compounding material the vault exists for.
-- A multi-turn exchange produced a consolidated fact/analysis/decision that you'll want to cite later, and no existing raw or wiki page holds it.
+- A `learn` session just wrapped — the consensus/controversy map, deep-dive, and 20/80 extraction are world-knowledge the vault exists to compound. (Retrieval Q&A answers do **not** go in wiki; wiki stores correct knowledge, not assessment traces.)
+- A multi-turn exchange produced a consolidated fact/analysis/decision that a third reader could use, and no existing raw or wiki page holds it.
 - The user explicitly says "remember this as a note" / "保存下来" / "记到 wiki 原始区".
 - The user sends in free-form content ("here's what I've been thinking about X...") and asks to file it.
 
-*Last-heartbeat-of-day only (fires after `evolve`):*
+*Last-heartbeat-of-day only (fires after heartbeat's memory maintenance):*
 
-- `evolve` / EOD distillation surfaces a `memory/` entry or `SOUL.md` phrase that has outgrown private-memory format — structured enough to become a source, queryable to the user, worth cross-linking. Promote to vault here rather than leaving it in private memory.
+- Today's memory maintenance found that an entry in `memory/` is actually world-knowledge that drifted there by accident (a fact about some domain, not a user-bot relationship note). Promote it from `memory/` to the vault — then the memory cleanup can drop its redundant copy.
 
 Do **not** Capture when:
 
-- The material belongs in `memory/`, `SOUL.md`, or a self-skill — that's `evolve`'s scope. Capture is only for vault-worthy content.
+- The material is user-bot relationship content (preferences, feedback, interaction patterns) — that belongs in `memory/`, maintained by heartbeat.
+- The material belongs in a self-skill — that's `evolve`'s scope, not the vault's.
 - The content is ephemeral or trivially re-derivable.
 - A matching raw or wiki page already captures it (extend that instead).
 
@@ -219,7 +228,7 @@ See `skills/heartbeat/SKILL.md` for the exact flow. The ops themselves (§0-§4 
 Capture runs at two cadences (see `skills/heartbeat/SKILL.md` for the actual flow):
 
 - **Every heartbeat** — last-hour signals only: finished `learn` session, multi-turn resolution worth reusing, explicit user ask.
-- **Last heartbeat of the day, after `evolve`** — promote `memory/` or `SOUL.md` entries that distillation + evolve surfaced as vault-worthy.
+- **Last heartbeat of the day, after memory maintenance** — promote `memory/` entries that turned out to be world-knowledge misfiled into private memory.
 
 One Capture per focused topic, not one per chat.
 
@@ -277,7 +286,7 @@ confidence: high | medium | low   # optional
 - Creating a new page when an existing one would do (silent duplication).
 - Forgetting to update `_wiki/index.md` on Ingest → future queries miss the page.
 - Capturing without Ingesting → raw file sits in `captured/` and never makes it into the compiled wiki; the point of Capture is the round-trip.
-- Capturing content that belongs in `memory/` / `SOUL.md` / self-skills instead → that's `evolve`'s scope, not the vault. Capture is only for durable, shareable source material.
+- Capturing user-bot relationship content (preferences, feedback, interaction quirks) → that's `memory/` (heartbeat's scope), not the vault. The test: does this fact need *this* user's context to make sense?
 - Bulk-dumping a chat transcript as a single Capture → one file per focused topic, not one file per session.
 - Letting valuable Query synthesis live only in chat → exploration doesn't compound, and you'll re-derive the same answer next week.
 - Copying raw source text wholesale into wiki pages → wiki becomes a mirror, not a synthesis. Summarize, connect, cite back.
