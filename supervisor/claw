@@ -4,7 +4,7 @@
 // logs / screen / send / monitor) works here, driving the exact same
 // dispatcher on the supervisor side (same code path, same state).
 //
-// Usage:  ./supervisor/zc <subcommand> [args...]
+// Usage:  ./supervisor/claw <subcommand> [args...]
 //
 // Walks up from the caller's cwd to find the project root (the nearest
 // ancestor that contains `ecosystem.config.cjs`), then connects to the
