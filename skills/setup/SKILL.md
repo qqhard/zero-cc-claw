@@ -38,8 +38,9 @@ When the user must paste something (bot token, user ID), ask for the paste direc
 
 Check if `<cwd>/.zero-claw-setup.json` exists. If it does, this is a **resumed setup** — read the file, pre-fill all previously collected values, and skip completed steps. Greet the user with "Welcome back! Picking up where you left off." and show what's already configured vs. what's still needed.
 
-Call TaskCreate 12 times to create all tasks. Do this immediately, before greeting the user or asking any questions. For resumed setups, mark already-completed tasks as `completed` right away:
+Call TaskCreate 14 times to create all tasks. Do this immediately, before greeting the user or asking any questions. For resumed setups, mark already-completed tasks as `completed` right away:
 
+- TaskCreate("Pre-authorize setup permissions")
 - TaskCreate("Choose language")
 - TaskCreate("Check prerequisites (tmux, node, pm2, bun)")
 - TaskCreate("Check Telegram plugin")
@@ -49,11 +50,53 @@ Call TaskCreate 12 times to create all tasks. Do this immediately, before greeti
 - TaskCreate("Get Telegram user ID")
 - TaskCreate("Collect user info (name, timezone)")
 - TaskCreate("Choose working directory")
+- TaskCreate("Choose bot runtime permission mode")
 - TaskCreate("Generate project files")
 - TaskCreate("Start supervisor & launch")
 - TaskCreate("Pair Telegram")
 
 Then for each step below: TaskUpdate → `in_progress` when starting, `completed` when done.
+
+0. **Pre-authorize setup permissions**: setup runs many shell commands (tmux, pm2, npm, git) and many file writes. Without pre-authorization, the user has to click "Allow" dozens of times — death by a thousand prompts. Ask ONCE up front:
+
+   Use AskUserQuestion:
+   > "Setup will run commands like `tmux`, `pm2`, `npm install`, `git`, and write files into this directory. May I add these to `<cwd>/.claude/settings.local.json` so you don't have to approve each one?"
+   > - **Yes, pre-authorize** (recommended) — writes the allow list; local to this project, not committed to git.
+   > - **No, ask me each time** — proceed without pre-auth.
+
+   If the user chooses pre-authorize, Write `<cwd>/.claude/settings.local.json` with this content (merge into existing allow list if file already exists):
+   ```json
+   {
+     "permissions": {
+       "allow": [
+         "Bash(tmux:*)",
+         "Bash(pm2:*)",
+         "Bash(npm install:*)",
+         "Bash(npm:*)",
+         "Bash(node:*)",
+         "Bash(bun:*)",
+         "Bash(claude plugins:*)",
+         "Bash(git init:*)",
+         "Bash(git add:*)",
+         "Bash(git commit:*)",
+         "Bash(git config:*)",
+         "Bash(git status:*)",
+         "Bash(mkdir:*)",
+         "Bash(chmod:*)",
+         "Bash(touch:*)",
+         "Bash(cp:*)",
+         "Bash(printf:*)",
+         "Bash(timedatectl:*)",
+         "Bash(cat:*)"
+       ]
+     }
+   }
+   ```
+   Then do this: **Write the file first**, then proceed. The user's upcoming Bash calls will match these prefixes and auto-approve. If the file already exists, merge — don't clobber existing entries. Tell the user: "Pre-authorized — settings saved to `<cwd>/.claude/settings.local.json`. You can edit or delete this file anytime."
+
+   If the user declines, continue without writing — they'll be prompted per command, which is fine for a paranoid user.
+
+   (This step is skipped on **resumed setup** if pre-auth has already been written — detect by reading `.claude/settings.local.json` and checking if the relevant entries are present.)
 
 1. **Language**: Use AskUserQuestion: "What language should we use? / 使用什么语言？"
    - English
@@ -80,7 +123,9 @@ Then for each step below: TaskUpdate → `in_progress` when starting, `completed
 
 4. **Name your assistant**: Ask the user to name their assistant. Suggest 3-5 names from mythology, folklore, or fiction — pick randomly from diverse cultures and pantheons each time (Greek, Norse, Egyptian, Hindu, Chinese, Japanese, Celtic, Mesopotamian, etc.). For each suggestion, give a one-line reason why the name fits an AI assistant (e.g. knowledge, wisdom, communication, protection). Let the user pick one or type their own. Save the chosen name — it will be used to suggest Telegram bot usernames next.
 
-5. **Shape the persona**: Now that the assistant has a name, give it a personality. Ask three questions in sequence (use AskUserQuestion with numbered options, always include "Other — type your own"):
+5. **Shape the persona**: Now that the assistant has a name, give it a personality. **Keep this to TWO rounds of AskUserQuestion** — persona is refinement, not the main event, and every extra round pushes users toward "just pick anything." Users can always edit `SOUL.md` / `IDENTITY.md` later.
+
+   **Round 1 — Role + tone (two questions on one screen).** Use a single AskUserQuestion call with two questions:
 
    a. **Core responsibility** — "What's this assistant mainly for?" Offer options tailored to typical uses:
       - General life assistant (chat, reminders, errands)
@@ -98,17 +143,19 @@ Then for each step below: TaskUpdate → `in_progress` when starting, `completed
       - Blunt and efficient
       - Other (type your own)
 
-   c. **Anything else** — Free-form: "Anything else you want them to know or embody? (can be skipped)" Short paragraph, hobbies to share, inside jokes, values, etc.
+   **Round 2 — Identity card (three questions on one screen, all with "Use default" as first option).** Single AskUserQuestion call, seeded by the name/role chosen above:
 
-   Based on these answers, draft a 2-4 sentence **Personality** paragraph that ties together the name's cultural/mythological background, chosen tone, and user's notes. Show the draft and ask "1. Looks good  2. Let me tweak it". Save the final three pieces — **core responsibility** will go into `IDENTITY.md` (its own field), and the **personality paragraph + user notes** will go into `SOUL.md`. `CLAUDE.md` itself gets no customization.
+   - **Creature** — what kind of being are they? First option: `Use default (<auto-picked from name>)`. Then 3-4 presets seeded by the name (e.g. for Thoth: "digital scribe", "archive keeper"; for Loki: "trickster in the wires"). Plus "Other — type your own".
+   - **Vibe tags** — 2-3 short adjectives. First option: `Use default (<pragmatic, terse, warm>)` derived from tone choice in Round 1. Plus 3 alternatives + "Other".
+   - **Emoji** — signature emoji. First option: `Use default (<auto-picked>)`. Plus 3 alternatives + "Other". Include "None" as its own option.
 
-   Then collect **Identity card** fields for `IDENTITY.md` (quick, one shot each):
-   - **Creature** — what kind of being are they? Offer options seeded by the name (e.g. for Thoth: "digital scribe", "archive keeper", "AI librarian"; for Loki: "trickster in the wires", "shapeshifting daemon"). Include "Other — type your own".
-   - **Vibe tags** — 2-3 short adjectives that match the Personality paragraph (e.g. "pragmatic, terse, occasionally witty"). Offer 3-4 presets based on their personality choice + "Other".
-   - **Emoji** — signature emoji. Suggest 3-4 that fit the name/creature (e.g. Thoth: 📜 🦩 🪶; Loki: 🦊 🔥 🪞). Include "Other".
-   - **Avatar** — skip by default; ask only if the user volunteers a path or URL.
+   **Do NOT ask a separate "paragraph confirm" round.** Draft the 2-4 sentence Personality paragraph yourself from Round 1 + the name's cultural background, and write it straight into `SOUL.md`. Tell the user in the wrap-up: *"I've drafted a personality paragraph into `SOUL.md` — edit it anytime."*
 
-   Save all fields for file generation.
+   **Do NOT ask a free-form "anything else" round.** Users who want to add context can do so by editing `SOUL.md` later; most users have nothing to say here, and making it a required prompt produces empty answers. Leave the *Notes from the User* section in `SOUL.md` with a short placeholder comment telling the user how to add their own notes.
+
+   **Avatar** is skipped by default; only ask if the user volunteers a path or URL.
+
+   After these two rounds, save: core responsibility → `IDENTITY.md`; personality paragraph + (empty) notes → `SOUL.md`; creature / vibe / emoji → `IDENTITY.md`.
 
 6. **Create two Telegram bots**: You need two bots. Explain why:
    - **Main bot** — your assistant's face, for daily conversation.
@@ -143,6 +190,15 @@ Then for each step below: TaskUpdate → `in_progress` when starting, `completed
    - "Supervisor will be at: `<cwd>/supervisor/`"
    - "1. Looks good  2. Let me change the parent directory"
 
+9b. **Choose bot runtime permission mode**: the bot's `start.sh` needs to decide how the long-running Claude Code session treats tool permissions. There are two modes — pick ONE and remember the choice (it decides how step 10 writes `start.sh` and whether to generate `<bot-dir>/.claude/settings.json`):
+
+   Use AskUserQuestion:
+   > "How should the bot handle tool permissions when it runs?"
+   > - **Bypass mode** (recommended, current default) — start.sh runs Claude with `--dangerously-skip-permissions`. On first launch Telegram/tmux will show one "Yes, I accept" modal; after that the bot acts freely. Simplest; matches a personal-assistant threat model where the bot fully represents the user.
+   > - **Granular mode (acceptEdits + allowlist)** — strip `--dangerously-skip-permissions` from start.sh, and pre-write `<bot-dir>/.claude/settings.json` with a broad allow list (Bash, file ops, WebFetch/WebSearch). Same effective capability as bypass but no startup modal, and the allow list is in a file the user can audit or tighten later.
+
+   Persist `MODE = bypass | granular` for use in steps 10 and 11. On **resumed setup**, re-read this from `.zero-claw-setup.json` or detect from the already-generated `start.sh` / `settings.json`.
+
 10. **Generate files**:
 
    **Language policy (applies to every bot-dir file below EXCEPT `CLAUDE.md`):** the templates ship in English as a baseline. If the user chose a language other than English in step 1, translate the prose into that language as you write each file — don't leave English boilerplate in the bot's working files. `CLAUDE.md` is the one exception: it's the system mechanism, copied verbatim and kept in English across all bots so upgrades are plain replacements. Keep these in English regardless of the user's choice: file and directory names, frontmatter keys (`name`, `description`, `type`, `allowed-tools`, `user-invocable`), frontmatter `type` values (`user` / `feedback` / `project` / `reference`), journal tag syntax (`(skills: x, y)`, `(candidate-skill: <slug>)`), cron expressions, shell commands, URLs, and skill names/slugs. Section headings inside prose (e.g. `## Every heartbeat`) can be translated. `ecosystem.config.cjs` and the supervisor files in the parent directory stay English — they're plumbing, not user-facing.
@@ -154,17 +210,41 @@ Then for each step below: TaskUpdate → `in_progress` when starting, `completed
    In the **bot directory** (`<cwd>/<name>/`):
    - Copy `$CLAUDE_PLUGIN_ROOT/template/CLAUDE.md` → `CLAUDE.md` **verbatim**. Do NOT fill any placeholders and do NOT translate it — this file has no placeholders anymore; it's the system mechanism, identical across all bots.
    - Copy `$CLAUDE_PLUGIN_ROOT/template/IDENTITY.md` → `IDENTITY.md`, fill in name, creature, vibe, emoji, avatar (leave blank if not provided), and the **Core Responsibility** paragraph drafted from step 5a (write it in the user's language). Translate labels and prose per the language policy.
-   - Copy `$CLAUDE_PLUGIN_ROOT/template/SOUL.md` → `SOUL.md`, replace the top `(personality paragraph ...)` placeholder with the drafted personality from step 5 (write it directly in the user's language), and replace the `(anything else ...)` placeholder under *Notes from the User* with the free-form notes. Translate the Core Truths and Boundaries sections into the user's language too — they're the baseline text the user will read and edit.
+   - Copy `$CLAUDE_PLUGIN_ROOT/template/SOUL.md` → `SOUL.md`, replace the top `(personality paragraph ...)` placeholder with the drafted personality from step 5 (write it directly in the user's language). Leave the `(anything else ...)` placeholder under *Notes from the User* as-is (translated to the user's language) — setup no longer collects free-form notes here, and this placeholder doubles as an invite for the user to fill in later. Translate the Core Truths and Boundaries sections into the user's language too — they're the baseline text the user will read and edit.
    - Copy `$CLAUDE_PLUGIN_ROOT/template/HEARTBEAT.md` → `HEARTBEAT.md`, translating the body into the user's language. The bot edits this file over time (it's the live hourly task list), so it must start in the user's language.
    - Copy `$CLAUDE_PLUGIN_ROOT/template/SLEEP.md` → `SLEEP.md`, translating the body into the user's language. Same rule: the bot edits it over time (live nightly task list).
    - Copy `$CLAUDE_PLUGIN_ROOT/template/CRONTAB.md` → `CRONTAB.md`, translating the body into the user's language. Leaves the table empty by default — the user (or the bot, at user's request) adds rows later.
    - Generate `USER.md` with collected user info (preferred name, timezone, user_id, chat_id, brief intro). Translate labels and the "About" prose per the language policy.
-   - Copy `$CLAUDE_PLUGIN_ROOT/start.sh` → `start.sh`, make executable.
+   - Copy `$CLAUDE_PLUGIN_ROOT/start.sh` → `start.sh`, make executable. **If `MODE = granular`**, Edit the copied `start.sh` and remove the ` --dangerously-skip-permissions` argument from the `claude` invocation (leave the rest of the line intact). In `MODE = bypass`, leave `start.sh` unchanged.
+   - **If `MODE = granular`**, also write `<bot-dir>/.claude/settings.json` with a broad allow list that matches bypass behavior without the startup modal:
+     ```json
+     {
+       "permissions": {
+         "allow": [
+           "Bash(*)",
+           "Read(**)",
+           "Write(**)",
+           "Edit(**)",
+           "Glob(**)",
+           "Grep(**)",
+           "WebFetch(*)",
+           "WebSearch(*)"
+         ]
+       }
+     }
+     ```
+     Tell the user where this file lives and that they can tighten/expand it later. Skip this file entirely in `MODE = bypass` — it's not needed when `--dangerously-skip-permissions` is on.
    - Create `memory/MEMORY.md` (empty memory index).
    - Create `journal/` directory.
    - **Install meta-skills**: the hardcoded meta-skill list is `["evolve"]`. For each name in that list, copy `$CLAUDE_PLUGIN_ROOT/skills/<name>/` → `<bot-dir>/.claude/skills/<name>/` (mkdir -p as needed). Heartbeat and sleep are NOT in this list — they're not skills; they're cron-driven task lists (`HEARTBEAT.md` / `SLEEP.md`) wired up by `CLAUDE.md` → "Heartbeat and Sleep".
    - **Initialize self-skills registry**: `touch <bot-dir>/.claude/skills/.self-skills` (plain text file, newline-separated skill names). Starts empty. This registry is where `evolve` appends new self-created skills; plugin-provided skills like `evolve` itself are NOT listed here.
    - Initialize git repo. Make sure `memory/`, `journal/`, `USER.md`, and `.claude/skills/` are tracked.
+     - **Before the first commit**, check git identity is configured, or `git commit` fails with `Author identity unknown`. Run `git config --global user.email` and `git config --global user.name`; if either is empty (non-zero exit or empty output), set **repo-local** identity in `<bot-dir>`:
+       ```bash
+       git config user.name "<preferred name from USER.md, or 'Bot Owner' as fallback>"
+       git config user.email "<user email if known, else '<preferred-name>@zero-claw.local'>"
+       ```
+       Do NOT touch `--global` — don't pollute the user's other repos.
    - If `.zero-claw-setup.json` exists in cwd, delete it — setup state is no longer needed.
 
 11. **Launch bot in background**:
@@ -179,21 +259,38 @@ Then for each step below: TaskUpdate → `in_progress` when starting, `completed
       ```bash
       tmux new-session -d -s <name> -c <working-dir> './start.sh'
       ```
-    - Wait ~15 seconds for Claude Code to initialize, then send "start" to trigger SessionStart hook (registers heartbeat and cron tasks):
-      ```bash
-      tmux send-keys -t <name>:0.0 -l 'start' && tmux send-keys -t <name>:0.0 Enter
-      ```
+    - **Watch the pane until the bot is ready** — use `tmux capture-pane -t <name>:0.0 -p` in a short polling loop (every ~2s, up to ~30s). What you look for depends on `MODE` from step 9b:
+      - **`MODE = bypass`**: there is a first-run permission prompt to handle, then the ready prompt.
+        1. **Permission modal** — Claude Code under `--dangerously-skip-permissions` shows a confirmation on first launch (text like "Yes, I accept" / "No, exit"). If you see it, send `2` + Enter to accept:
+           ```bash
+           tmux send-keys -t <name>:0.0 -l '2' && tmux send-keys -t <name>:0.0 Enter
+           ```
+           Then keep polling.
+        2. **Ready prompt** — input box visible, no modal. Once you see it, send `start` to trigger the SessionStart hook (registers heartbeat and cron tasks):
+           ```bash
+           tmux send-keys -t <name>:0.0 -l 'start' && tmux send-keys -t <name>:0.0 Enter
+           ```
+      - **`MODE = granular`**: no permission modal appears (we removed `--dangerously-skip-permissions` and pre-wrote `.claude/settings.json`). Just wait for the ready prompt and send `start` the same way.
+
+      Do NOT just sleep 15s and blindly send "start" — in bypass mode the permission modal swallows the keystroke. Always verify the pane state by capture-pane before sending.
     - Tell the user: "Your bot is starting up. You can watch it with: `tmux attach -t <name>`"
+    - **Verify supervisor bot is reachable** before moving on to main-bot pairing. This is a hard gate — if `/status` doesn't reply now, pairing the main bot next will just mask whatever is wrong with the supervisor.
+      > "Open Telegram and DM **@<supervisor-bot-username>** with `/help` (or `/status`). Paste the reply back here so I can confirm the supervisor is alive."
+      When the user pastes the reply, check it looks like the supervisor's menu (mentions `/status`, `/restart`, `/logs`, etc.). If nothing comes back, diagnose before continuing: `pm2 logs <dirname>-supervisor --lines 40`, check `ecosystem.config.cjs` token, check the user_id is in `ALLOWED_USERS`.
 
 12. **Pair Telegram** — **the pairing step waits for a HUMAN, not for the bot.** The bot sits silently waiting for a Telegram DM; there is no progress signal to poll. Do not background-poll the tmux pane.
 
     1. Say to the user **explicitly**:
        > "Open Telegram and DM **@<main-bot-username>** with any message (e.g. 'hi'). The bot will reply with a 6-character pairing code. **Paste that code back here.** I'm waiting for you, not for the bot — until you paste the code, nothing will happen on my end."
-    2. When the user pastes the code, **edit `<bot-dir>/.telegram/access.json` directly** — do NOT shell out to `/telegram:access` (it has the same hardcoded-path bug). Use Read+Write:
-       - Find the pending entry whose code matches the pasted one
-       - Move its `user_id` (and display name) into `allowed`
-       - Remove it from `pending`
-       - Optionally flip `dmPolicy` to `allowlist` once the user confirms no one else needs in
+    2. When the user pastes the code, **edit `<bot-dir>/.telegram/access.json` directly** — do NOT shell out to `/telegram:access` (it has the same hardcoded-path bug). Steps:
+       - **Read the file first.** The Telegram plugin generated this file with its own field names; treat what's on disk as authoritative and keep the structure/casing you see.
+       - **Field contract (verified against the plugin's server.ts):** `allowFrom` is an **array of user_id strings**, not objects. The plugin checks access with `access.allowFrom.includes(senderId)` where `senderId` is a string — pushing an object like `{userId, chatId, displayName}` silently fails to match. Examples:
+         - ✅ `"allowFrom": ["5941854392"]`
+         - ❌ `"allowFrom": [{"userId": "5941854392", "displayName": "Boss"}]`
+       - Find the pending entry whose code matches the pasted one.
+       - Append its `user_id` (as a string) to the `allowFrom` array. Drop the display name and chat id — they don't go into `allowFrom`.
+       - Remove the matched entry from `pending`.
+       - Optionally flip `dmPolicy` to `allowlist` once the user confirms no one else needs in.
     3. Ask the user to send another Telegram message to confirm the bot replies normally.
     4. Confirm: "Your assistant is live! Messages to @<main-bot-username> now reach it."
     5. Give a brief tour: memory system, heartbeat, supervisor `/help`.

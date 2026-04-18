@@ -108,6 +108,39 @@ function getPanePid(bot) {
   }
 }
 
+// Linux exposes /proc/<pid>/cmdline; macOS does not. Try the platform-native
+// path first, fall back to `ps` the other way. Returned string may be a bare
+// name (`claude ...`) or path-prefixed (`/usr/local/bin/claude ...`) depending
+// on how the process was launched — downstream matchers must handle both.
+function getProcCmd(pid) {
+  const tryProc = () => {
+    try {
+      const cmd = sh(`cat /proc/${pid}/cmdline 2>/dev/null`);
+      if (cmd) return cmd;
+    } catch {
+      /* not available */
+    }
+    return null;
+  };
+  const tryPs = () => {
+    try {
+      const cmd = sh(`ps -p ${pid} -o command= 2>/dev/null`).trim();
+      if (cmd) return cmd;
+    } catch {
+      /* no such pid */
+    }
+    return null;
+  };
+  if (process.platform === 'linux') {
+    return tryProc() ?? tryPs() ?? '';
+  }
+  return tryPs() ?? tryProc() ?? '';
+}
+
+function isClaudeCmd(cmd) {
+  return /(?:^|\/)claude(?:$|\s|\0)/.test(cmd);
+}
+
 function getClaudePid(bot) {
   const panePid = getPanePid(bot);
   if (!panePid) return null;
@@ -118,15 +151,13 @@ function getClaudePid(bot) {
       .map(Number);
     for (const pid of children) {
       try {
-        const cmd = sh(`cat /proc/${pid}/cmdline 2>/dev/null`);
-        if (cmd.startsWith('claude')) return pid;
+        if (isClaudeCmd(getProcCmd(pid))) return pid;
         const grandchildren = sh(`pgrep -P ${pid}`)
           .split('\n')
           .filter(Boolean)
           .map(Number);
         for (const gc of grandchildren) {
-          const gcCmd = sh(`cat /proc/${gc}/cmdline 2>/dev/null`);
-          if (gcCmd.startsWith('claude')) return gc;
+          if (isClaudeCmd(getProcCmd(gc))) return gc;
         }
       } catch {
         /* skip */
@@ -592,7 +623,12 @@ async function queryContext(bot) {
   const tokens = parseTokenCount(m[1], m[2]);
   const limit = parseTokenCount(m[3], m[4]);
   const pct = parseFloat(m[5]);
-  const modelMatch = pane.match(/claude-[a-z0-9-]+(?:\[[0-9a-z]+\])?/i);
+  // Scoped to known Claude model families so we don't accidentally match
+  // unrelated `claude-*` strings that appear in the pane (e.g. plugin names
+  // like `claude-plugins-official`). Update this list when new families ship.
+  const modelMatch = pane.match(
+    /claude-(?:opus|sonnet|haiku)-[\d][\w.-]*(?:\[[0-9a-z]+\])?/i
+  );
   return {
     tokens,
     limit,
