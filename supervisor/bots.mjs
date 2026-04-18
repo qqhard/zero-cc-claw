@@ -93,6 +93,12 @@ export function createBotManager({ bots, config, onEvent = () => {} }) {
   const contextCache = new Map(); // { pct, tokens, limit, model, at }
   const lastCaptures = new Map();
   const monitors = new Map(); // { intervalId, seconds }
+  // Bots the user explicitly /stop'd. Watchdog and scheduler both respect
+  // this — without it, auto-restart would immediately undo a manual stop.
+  // Cleared on /start, /restart, and any successful startProcess() issued
+  // through the bot manager (schedulers only issue startProcess, never
+  // mark-stop, so the flag is sticky across scheduled ticks).
+  const stoppedByUser = new Set();
   // Fire-once-per-day state for both schedules. Uses the local date as the
   // dedupe key so a supervisor restart mid-day doesn't re-fire events that
   // already happened — except when there's no transcript evidence, in which
@@ -514,11 +520,19 @@ export function createBotManager({ bots, config, onEvent = () => {} }) {
   function watchdogTick() {
     for (const bot of BOTS) {
       if (inRestartGrace(bot.name)) continue;
-      if (!sessionExists(bot)) continue;
+      // User-stopped bots are left alone. This is the ONLY reason watchdog
+      // now skips a bot with a missing session — previously the code relied
+      // on `!sessionExists` as the "user-stopped" signal, but a crashed
+      // claude cascades the whole tmux session dead (start.sh exits → pty
+      // closes → last session → server exits), and that tripped the same
+      // branch, making the watchdog silently inert after any real crash.
+      if (stoppedByUser.has(bot.name)) continue;
 
       const state = getRestartState(bot.name);
+      const sessionUp = sessionExists(bot);
+      const claudeUp = sessionUp && isRunning(bot);
 
-      if (isRunning(bot)) {
+      if (claudeUp) {
         // Self-heal: if claude came back (manual restart, delayed boot, etc.)
         // clear the abandoned lock too — otherwise the next crash won't
         // trigger auto-restart and the user has to /start manually.
@@ -543,8 +557,9 @@ export function createBotManager({ bots, config, onEvent = () => {} }) {
       }
 
       state.failures += 1;
+      const deathMode = sessionUp ? 'died' : 'session gone';
       console.log(
-        `[watchdog] ${bot.name} died, restarting (${state.failures}/${MAX_CONSECUTIVE_RESTARTS})`
+        `[watchdog] ${bot.name} ${deathMode}, restarting (${state.failures}/${MAX_CONSECUTIVE_RESTARTS})`
       );
       startProcess(bot);
       markRestart(bot.name);
@@ -598,7 +613,10 @@ export function createBotManager({ bots, config, onEvent = () => {} }) {
 
     for (const bot of BOTS) {
       if (inRestartGrace(bot.name)) continue;
-      if (!sessionExists(bot)) continue;
+      // Respect user /stop — don't let sleep/daily-restart resurrect a
+      // deliberately-stopped bot (scheduler would otherwise call
+      // startProcess through the 'daily' trigger branch).
+      if (stoppedByUser.has(bot.name)) continue;
 
       // --- Sleep trigger (catch-up: fire any time past SLEEP_AT today) ---
       // Track whether we fired sleep in THIS tick so the restart block below
@@ -765,6 +783,9 @@ export function createBotManager({ bots, config, onEvent = () => {} }) {
     invalidateContextCache,
     startMonitor,
     stopMonitor,
+    // user-stop flag (controls whether watchdog / scheduler touch the bot)
+    markStopped: (name) => stoppedByUser.add(name),
+    unmarkStopped: (name) => stoppedByUser.delete(name),
     // for /monitor defaults
     DEFAULT_MONITOR_SECONDS,
   };

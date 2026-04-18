@@ -185,6 +185,7 @@ if (!HEADLESS) {
     const bot = parseBotArg(ctx);
     if (!bot) return;
     const msg = await ctx.reply(`Restarting ${bot.name}...`);
+    manager.unmarkStopped(bot.name);
     manager.markRestart(bot.name);
     manager.resetRestartState(bot.name);
     manager.invalidateContextCache(bot.name);
@@ -204,6 +205,7 @@ if (!HEADLESS) {
     await manager.killProcess(bot);
     manager.resetRestartState(bot.name);
     manager.invalidateContextCache(bot.name);
+    manager.markStopped(bot.name);
     await ctx.reply(`${bot.name} stopped`);
   });
 
@@ -211,6 +213,7 @@ if (!HEADLESS) {
     const bot = parseBotArg(ctx);
     if (!bot) return;
     if (manager.isRunning(bot)) return ctx.reply(`${bot.name} already running`);
+    manager.unmarkStopped(bot.name);
     manager.startProcess(bot);
     manager.markRestart(bot.name);
     manager.resetRestartState(bot.name);
