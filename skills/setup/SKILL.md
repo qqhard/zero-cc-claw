@@ -309,11 +309,16 @@ Then for each step below: TaskUpdate → `in_progress` when starting, `completed
 
       Do NOT just sleep 15s and blindly send "start" — in bypass mode the permission modal swallows the keystroke. Always verify the pane state by capture-pane before sending.
     - Tell the user: "Your bot is starting up. You can watch it with: `tmux attach -t <name>`"
-    - **Verify the Supervisor bot is reachable** before moving on to pairing `<AssistantName>`. This is a hard gate — if `/status` doesn't reply now, pairing `<AssistantName>` next will just mask whatever is wrong with the Supervisor channel.
+    - **Verify the Supervisor bot is reachable — this is a hard gate.** Do NOT skip it, do NOT postpone it until after pairing, and do NOT bundle it with any other user-facing test. It gets its own round: one message asking for one thing, then wait.
       > "Open Telegram and DM **@<supervisor-bot-username>** with `/help` (or `/status`). Paste the reply back here so I can confirm the Supervisor bot is alive."
-      When the user pastes the reply, check it looks like the Supervisor bot's menu (mentions `/status`, `/restart`, `/logs`, etc.). If nothing comes back, diagnose before continuing: `pm2 logs <dirname>-supervisor --lines 40`, check `ecosystem.config.cjs` token, check the user_id is in `ALLOWED_USERS`.
+
+      While this is outstanding, say nothing about pairing `<AssistantName>` yet — the user will try to do both at once and you'll lose the ability to diagnose which channel is broken. Silence until they paste the Supervisor reply.
+
+      When the user pastes the reply, check it looks like the Supervisor bot's menu (mentions `/status`, `/restart`, `/logs`, etc.). If nothing comes back, diagnose before continuing: `pm2 logs <dirname>-supervisor --lines 40`, check `ecosystem.config.cjs` token, check the user_id is in `ALLOWED_USERS`. Only once the Supervisor reply is confirmed, proceed to step 12.
 
 12. **Pair Telegram** — **the pairing step waits for a HUMAN, not for the bot.** The bot sits silently waiting for a Telegram DM; there is no progress signal to poll. Do not background-poll the tmux pane.
+
+    **One user action per message, always.** Each substep below is its own round — send one instruction, wait for the user's paste/confirmation, then move to the next. Never collapse "send hi to `<AssistantName>`" + "DM Supervisor /status" + "try another message" into a single checklist. Batching these hides which one failed when something breaks.
 
     1. Say to the user **explicitly**:
        > "Open Telegram and DM **@<main-bot-username>** with any message (e.g. 'hi'). The bot will reply with a 6-character pairing code. **Paste that code back here.** I'm waiting for you, not for the bot — until you paste the code, nothing will happen on my end."
@@ -326,7 +331,7 @@ Then for each step below: TaskUpdate → `in_progress` when starting, `completed
        - Append its `user_id` (as a string) to the `allowFrom` array. Drop the display name and chat id — they don't go into `allowFrom`.
        - Remove the matched entry from `pending`.
        - Optionally flip `dmPolicy` to `allowlist` once the user confirms no one else needs in.
-    3. Ask the user to send another Telegram message to confirm the bot replies normally.
+    3. Ask the user to send **one more** Telegram message to `<AssistantName>` to confirm the bot now replies normally (pairing only proves the handshake, not that the bot's main loop is responsive). This is its own round — don't mention Supervisor here; that was already verified in step 11. Wait for the user to confirm they got a reply before moving on.
     4. Confirm: "Your assistant is live! Messages to @<main-bot-username> now reach it."
-    5. Give a brief tour: memory system, heartbeat, supervisor `/help`.
+    5. Give a brief tour: memory system, heartbeat, Supervisor bot `/help`.
     6. Tell user: `tmux attach -t <name>` to watch, `Ctrl-b d` to detach.
