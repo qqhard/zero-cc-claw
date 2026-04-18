@@ -112,7 +112,7 @@ Components to check:
 
 **a) Supervisor (`supervisor/index.mjs`)** — check for: multi-bot support, watchdog (w/ consecutive-failure cap + abandon-and-notify), context-usage auto-restart (`getContextUsagePct`), `/screen`, `/send`, `/context`, BOTS env parsing. Check `supervisor/package.json` dependencies.
 
-**b) ecosystem.config.cjs** — check format: BOTS env var? Legacy single-bot vars? Missing env vars (WATCHDOG_INTERVAL, MAX_CONSECUTIVE_RESTARTS, CONTEXT_CHECK_INTERVAL, CONTEXT_THRESHOLD, BOOT_DELAY)? Also check the pm2 app name: if it's just `supervisor` (generic), it should be renamed to `<assistant-name>-supervisor` to avoid collisions with other Zero-Claw projects on the same machine.
+**b) ecosystem.config.cjs** — check format: BOTS env var? Legacy single-bot vars? Missing env vars (WATCHDOG_INTERVAL, MAX_CONSECUTIVE_RESTARTS, CONTEXT_CHECK_INTERVAL, CONTEXT_THRESHOLD, SLEEP_AT, DAILY_RESTART_AT, MAX_UPTIME_HOURS)? SLEEP_AT/DAILY_RESTART_AT are in host local time — if the host's `/etc/timezone` doesn't match the user's timezone, warn and ask which to use. Also check the pm2 app name: if it's just `supervisor` (generic), it should be renamed to `<assistant-name>-supervisor` to avoid collisions with other Zero-Claw projects on the same machine.
 
 **b2) pm2 collision check** — run `pm2 jlist` and check if there's already a process named `supervisor` (or the same name). Compare its `cwd` with the current project root. If it belongs to a DIFFERENT project, warn the user and do NOT restart it. Only restart the supervisor that belongs to THIS project (matched by cwd).
 
@@ -129,7 +129,7 @@ Compare the existing file against the plugin template:
 
 Record these migrations for Phase 3; do not apply them yet.
 
-**d) start.sh** (for each bot) — check for: TELEGRAM_STATE_DIR export, --project-dir flag.
+**d) start.sh** (for each bot) — check for: TELEGRAM_STATE_DIR export, --project-dir flag, `.claude-crash.log` stderr redirect (the only durable crash evidence once the tmux pane scrolls away).
 
 **e) Skills** — check if bot directories have:
 - `.claude/skills/evolve/` (meta-skill)
@@ -195,7 +195,7 @@ Preserve any custom env vars the user added. **Rename pm2 app name** from generi
 After the replacement, the file should differ from the plugin template *only* in the two cron expressions (if the user customized them). Anywhere else differing means migration extracted incorrectly.
 
 **start.sh** (if outdated):
-- "Replace with latest" — it's a one-liner, safe to overwrite
+- "Replace with latest" — small and stateless, safe to overwrite (preserves `--dangerously-skip-permissions` removal for granular mode by re-applying the setup edit)
 - "Show diff"
 - "Skip"
 

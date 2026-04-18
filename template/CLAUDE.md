@@ -79,16 +79,15 @@ Heartbeat and sleep are zero-claw's autonomous scheduling mechanism. There is no
 
 ### How it works
 
-Register both crons on session start via CronCreate. They are two fully independent jobs. One does not trigger the other.
+**Heartbeat** runs as a bot-owned cron registered at session start via CronCreate. **Sleep** is supervisor-driven: the supervisor types a plain text prompt into the bot's TUI at `SLEEP_AT`, then restarts the bot at `DAILY_RESTART_AT` once the sleep trigger is ≥1h old. Putting sleep under supervisor control means a host that was off at the scheduled sleep time still gets caught up on the next boot — the bot's own cron cannot do that.
 
 **CronCreate uses the host's local timezone** (the machine running this bot, set via `TZ` or `timedatectl`). Write cron expressions directly in local time — do NOT convert to UTC. If `USER.md` lists a timezone different from the host's, surface that to the user before scheduling so they can decide which to follow.
 
 | Cron (local time) | Purpose | Prompt |
 |---|---|---|
 | `7 8-23 * * *` | Hourly heartbeat during waking hours | `Read HEARTBEAT.md and follow it.` |
-| `0 1 * * *` | Nightly consolidation while the user is asleep | `Read SLEEP.md and follow it.` |
 
-To shift the schedule (different waking hours, different bedtime, weekends-only, etc.), edit the cron expressions in this table directly and restart the bot. This is the *only* user-customization point in `CLAUDE.md` — everything else is system mechanism.
+Sleep timing and the daily restart live in `ecosystem.config.cjs` (`SLEEP_AT`, `DAILY_RESTART_AT`, `MAX_UPTIME_HOURS`). The heartbeat cron is still the only thing in this table — edit it directly to change waking hours / frequency, then restart the bot. This is the *only* user-customization point in `CLAUDE.md` — everything else is system mechanism.
 
 ### Heartbeat scope
 

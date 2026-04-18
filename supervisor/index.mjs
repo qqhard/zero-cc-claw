@@ -2,6 +2,9 @@
 
 import { Telegraf } from 'telegraf';
 import { execSync, execFileSync } from 'node:child_process';
+import fs from 'node:fs';
+import path from 'node:path';
+import os from 'node:os';
 
 // --- Config ---
 const BOT_TOKEN = process.env.SUPERVISOR_BOT_TOKEN;
@@ -18,7 +21,6 @@ const WATCHDOG_INTERVAL = parseInt(process.env.WATCHDOG_INTERVAL ?? '60');
 const MAX_CONSECUTIVE_RESTARTS = parseInt(
   process.env.MAX_CONSECUTIVE_RESTARTS ?? '5'
 );
-const BOOT_DELAY = parseInt(process.env.BOOT_DELAY || '10');
 const MONITOR_INTERVAL = parseInt(process.env.MONITOR_INTERVAL || '0');
 const MONITOR_CAPTURE_LINES = parseInt(
   process.env.MONITOR_CAPTURE_LINES || '500'
@@ -44,6 +46,44 @@ const CONTEXT_QUERY_WAIT_MS = parseInt(
 // Grace window after a deliberate restart: watchdog skips the bot so the
 // in-flight boot doesn't get mistaken for a crash.
 const RESTART_GRACE_SECONDS = 30;
+
+// Sleep + restart are now both supervisor-driven instead of bot-owned crons,
+// so they keep working when the host boots late — the bot's own CronCreate
+// wouldn't have fired if the box was off at the scheduled time, but the
+// supervisor sees "past target, not fired today" on the next tick and
+// catches up.
+//
+// Sleep: types SLEEP_COMMAND into the bot's TUI at SLEEP_AT (local HH:MM).
+// Default 01:00 matches the typical "user is asleep" window. The command is
+// the same plain-text prompt the bot's old CronCreate used so no new slash
+// command is needed — also instructs the bot to read yesterday's journal in
+// case sleep is running late (catch-up path).
+const SLEEP_AT = process.env.SLEEP_AT ?? '01:00';
+const SLEEP_COMMAND =
+  process.env.SLEEP_COMMAND ||
+  '读取 SLEEP.md 并按其执行。同时阅读昨天的日记（以覆盖 catch-up 的场景）。';
+// Daily restart: fires once per day at DAILY_RESTART_AT (local HH:MM) only
+// after SLEEP_COMMAND has been confirmed via Claude transcripts AND ≥1h has
+// passed since it was fired — otherwise we'd kill claude mid-sleep-routine
+// in the catch-up case (host boots at 05:30, supervisor fires sleep at
+// 05:31, restart scheduled at 06:00 would interrupt).
+const DAILY_RESTART_AT = process.env.DAILY_RESTART_AT ?? '06:00';
+const RESTART_AFTER_SLEEP_MIN_HOURS = parseFloat(
+  process.env.RESTART_AFTER_SLEEP_MIN_HOURS ?? '1'
+);
+// Window for looking back for a sleep-trigger user prompt in Claude's own
+// transcripts. Needs to cover sleep-start + duration + the gap to
+// DAILY_RESTART_AT (sleep at ~01:00 + ~5h gap to 06:00 + buffer).
+const SLEEP_DONE_MAX_AGE_HOURS = parseFloat(
+  process.env.SLEEP_DONE_MAX_AGE_HOURS ?? '8'
+);
+// Text that a user prompt must contain to count "sleep ran". Matches the
+// SLEEP_COMMAND sent by the supervisor.
+const SLEEP_TRIGGER_PATTERN = process.env.SLEEP_TRIGGER_PATTERN || 'SLEEP.md';
+// Uptime fallback: if the user's host was off at DAILY_RESTART_AT the
+// scheduled restart is missed. Force a restart once the current claude has
+// been up longer than this. 0 disables.
+const MAX_UPTIME_HOURS = parseFloat(process.env.MAX_UPTIME_HOURS ?? '24');
 
 // Parse BOTS: "name:session:dir,name2:session2:dir2"
 // Falls back to legacy single-bot env vars
@@ -89,12 +129,6 @@ function sessionExists(bot) {
     return true;
   } catch {
     return false;
-  }
-}
-
-function ensureSession(bot) {
-  if (!sessionExists(bot)) {
-    sh(`tmux new-session -d -s ${bot.session} -c ${bot.workDir}`);
   }
 }
 
@@ -173,62 +207,51 @@ function isRunning(bot) {
   return getClaudePid(bot) !== null;
 }
 
+// Nuke the whole tmux session rather than SIGTERM individual children.
+// Why: claude-code's TUI occasionally drops out of raw mode (stdin ends up in
+// cooked+echo, keystrokes pile up as literal `^M` below the TUI, slash
+// commands stop working), and the only reliable recovery is a brand-new pty.
+// Killing the session + recreating on launch gives every restart a fresh pty
+// and clears any accumulated termios state.
 async function killProcess(bot) {
-  const panePid = getPanePid(bot);
-  if (!panePid) return false;
-
-  let children;
+  if (!sessionExists(bot)) return false;
   try {
-    children = sh(`pgrep -P ${panePid}`)
-      .split('\n')
-      .filter(Boolean)
-      .map(Number);
+    sh(`tmux kill-session -t ${bot.session}`);
+    return true;
   } catch {
     return false;
   }
-  if (!children.length) return false;
-
-  for (const p of children) {
-    try {
-      process.kill(p, 'SIGTERM');
-    } catch {
-      /* already dead */
-    }
-  }
-
-  for (let i = 0; i < 10; i++) {
-    await sleep(500);
-    if (!isRunning(bot)) return true;
-  }
-
-  for (const p of children) {
-    try {
-      process.kill(p, 'SIGKILL');
-    } catch {
-      /* already dead */
-    }
-  }
-  await sleep(500);
-  return true;
 }
 
-function startProcess(bot) {
-  ensureSession(bot);
-  sh(
-    `tmux send-keys -t ${bot.target} 'cd ${bot.workDir} && ${START_CMD}' Enter`
-  );
-  setTimeout(() => {
-    try {
-      execFileSync('tmux', ['send-keys', '-t', bot.target, '-l', 'start'], {
-        timeout: 10_000,
-      });
-      execFileSync('tmux', ['send-keys', '-t', bot.target, 'Enter'], {
-        timeout: 10_000,
-      });
-    } catch {
-      /* session may not be ready */
+// Always fresh pty: kill any existing session, then create a new one with
+// start.sh as the initial command. Avoids send-keys racing a live TUI and
+// sidesteps claude-code's occasional raw-mode loss (see killProcess).
+async function startProcess(bot) {
+  try {
+    await killProcess(bot);
+    sh(
+      `tmux new-session -d -s ${bot.session} -c ${bot.workDir} '${START_CMD}'`
+    );
+    // Wait for the TUI to be actually listening for input, not just for the
+    // process to exist. Sending "start" before the Telegram channel handshake
+    // has finished (when `isRunning=true` but TUI is still booting) drops the
+    // keystrokes on the floor and claude never runs its kickoff routine.
+    // "Listening for channel messages" is printed once the TUI is live.
+    const READY_MARKER = /Listening for channel messages/;
+    for (let i = 0; i < 60; i++) {
+      await sleep(1000);
+      const pane = capturePane(bot, 30);
+      if (pane && READY_MARKER.test(pane)) break;
     }
-  }, BOOT_DELAY * 1000);
+    execFileSync('tmux', ['send-keys', '-t', bot.target, '-l', 'start'], {
+      timeout: 10_000,
+    });
+    execFileSync('tmux', ['send-keys', '-t', bot.target, 'Enter'], {
+      timeout: 10_000,
+    });
+  } catch (err) {
+    console.error(`[startProcess] ${bot.name}: ${err.message}`);
+  }
 }
 
 function capturePane(bot, lines = 50) {
@@ -295,11 +318,10 @@ tg.command('restart', async (ctx) => {
   const bot = parseBotArg(ctx);
   if (!bot) return;
   const msg = await ctx.reply(`Restarting ${bot.name}...`);
-  await killProcess(bot);
-  startProcess(bot);
   markRestart(bot.name);
   resetRestartState(bot.name);
   invalidateContextCache(bot.name);
+  await startProcess(bot);
   await ctx.telegram.editMessageText(
     ctx.chat.id,
     msg.message_id,
@@ -311,7 +333,7 @@ tg.command('restart', async (ctx) => {
 tg.command('stop', async (ctx) => {
   const bot = parseBotArg(ctx);
   if (!bot) return;
-  if (!isRunning(bot)) return ctx.reply(`${bot.name} not running`);
+  if (!sessionExists(bot)) return ctx.reply(`${bot.name} not running`);
   await killProcess(bot);
   resetRestartState(bot.name);
   invalidateContextCache(bot.name);
@@ -548,7 +570,13 @@ if (WATCHDOG_INTERVAL > 0) {
       const state = getRestartState(bot.name);
 
       if (isRunning(bot)) {
-        if (state.failures > 0) state.failures = 0;
+        // Self-heal: if claude came back (manual restart, delayed boot, etc.)
+        // clear the abandoned lock too — otherwise the next crash won't
+        // trigger auto-restart and the user has to /start manually.
+        if (state.failures > 0 || state.abandoned) {
+          state.failures = 0;
+          state.abandoned = false;
+        }
         continue;
       }
 
@@ -672,16 +700,234 @@ if (CONTEXT_CHECK_INTERVAL > 0) {
         pushToUsers(
           `${bot.name} context at ${usage.pct}% — restarting for fresh session`
         );
-        await killProcess(bot);
-        startProcess(bot);
         markRestart(bot.name);
         invalidateContextCache(bot.name);
         resetRestartState(bot.name);
+        await startProcess(bot);
       }
     }
   }, CONTEXT_CHECK_INTERVAL * 1000);
   console.log(
     `Context check enabled, interval: ${CONTEXT_CHECK_INTERVAL}s, threshold: >${CONTEXT_THRESHOLD}%`
+  );
+}
+
+// --- Daily restart (sleep-aware) ---
+// Scans Claude Code's own session transcripts at `~/.claude/projects/<slug>/`
+// for a recent user message containing SLEEP_TRIGGER_PATTERN. If found, the
+// bot's sleep cron fired and reached claude, so a fresh restart is safe.
+// If not found, we skip the restart and alert the user — likely the bot was
+// down during sleep window and forcing a restart would wipe context the bot
+// never had a chance to consolidate.
+function projectsDirFor(workDir) {
+  // Claude Code's convention: working dir with every non-alphanumeric char
+  // replaced by '-'. /workspace/foo/bar → -workspace-foo-bar
+  const slug = workDir.replace(/[^a-zA-Z0-9]/g, '-');
+  return path.join(os.homedir(), '.claude', 'projects', slug);
+}
+
+function sleepTriggeredRecently(bot) {
+  const dir = projectsDirFor(bot.workDir);
+  const cutoffMs = Date.now() - SLEEP_DONE_MAX_AGE_HOURS * 3600_000;
+  let entries;
+  try {
+    entries = fs
+      .readdirSync(dir)
+      .filter((f) => f.endsWith('.jsonl'))
+      .map((f) => {
+        try {
+          return {
+            file: path.join(dir, f),
+            mtime: fs.statSync(path.join(dir, f)).mtimeMs,
+          };
+        } catch {
+          return null;
+        }
+      })
+      .filter((e) => e && e.mtime >= cutoffMs)
+      .sort((a, b) => b.mtime - a.mtime);
+  } catch {
+    return { ok: false, reason: `transcripts dir missing (${dir})` };
+  }
+  for (const { file } of entries) {
+    let content;
+    try {
+      content = fs.readFileSync(file, 'utf-8');
+    } catch {
+      continue;
+    }
+    for (const line of content.split('\n')) {
+      // Match genuine user prompts only, not tool_result-wrapped user lines:
+      //   real cron prompt:  "content":"读取 ... SLEEP.md ..."
+      //   tool_result wrap:  "content":[{"tool_use_id":...}]
+      // The tool_result shape happens to also contain the cron's prompt text
+      // when a subagent registered the cron, which would cause false hits.
+      const userContentMatch = line.match(
+        /"role":"user","content":"([^"]*)"/
+      );
+      if (!userContentMatch) continue;
+      if (!userContentMatch[1].includes(SLEEP_TRIGGER_PATTERN)) continue;
+      const m = line.match(/"timestamp":"([^"]+)"/);
+      if (!m) continue;
+      const ts = new Date(m[1]).getTime();
+      if (Number.isFinite(ts) && ts >= cutoffMs) {
+        return { ok: true, at: new Date(ts) };
+      }
+    }
+  }
+  return { ok: false, reason: 'no recent SLEEP.md trigger in transcripts' };
+}
+
+function claudeUptimeSeconds(bot) {
+  const pid = getClaudePid(bot);
+  if (!pid) return null;
+  try {
+    const n = parseInt(sh(`ps -o etimes= -p ${pid}`));
+    return Number.isFinite(n) ? n : null;
+  } catch {
+    return null;
+  }
+}
+
+function parseHHMM(s) {
+  const m = (s || '').match(/^(\d{1,2}):(\d{2})$/);
+  if (!m) return null;
+  const h = parseInt(m[1]);
+  const mm = parseInt(m[2]);
+  if (h < 0 || h > 23 || mm < 0 || mm > 59) return null;
+  return { h, mm };
+}
+
+function fireSleep(bot) {
+  if (!isRunning(bot)) {
+    console.log(`[sleep] ${bot.name}: claude not running, skipping`);
+    return false;
+  }
+  try {
+    execFileSync(
+      'tmux',
+      ['send-keys', '-t', bot.target, '-l', SLEEP_COMMAND],
+      { timeout: 10_000 }
+    );
+    execFileSync('tmux', ['send-keys', '-t', bot.target, 'Enter'], {
+      timeout: 10_000,
+    });
+    console.log(`[sleep] ${bot.name}: fired`);
+    pushToUsers(`${bot.name} sleep triggered`);
+    return true;
+  } catch (err) {
+    console.error(`[sleep] ${bot.name}: send failed: ${err.message}`);
+    return false;
+  }
+}
+
+const sleepTarget = SLEEP_AT ? parseHHMM(SLEEP_AT) : null;
+if (SLEEP_AT && !sleepTarget) {
+  console.error(`SLEEP_AT invalid: ${SLEEP_AT} (expected HH:MM)`);
+}
+const dailyTarget = DAILY_RESTART_AT ? parseHHMM(DAILY_RESTART_AT) : null;
+if (DAILY_RESTART_AT && !dailyTarget) {
+  console.error(
+    `DAILY_RESTART_AT invalid: ${DAILY_RESTART_AT} (expected HH:MM)`
+  );
+}
+
+// Fire-once-per-day state for both schedules. Uses the local date as the
+// dedupe key so a supervisor restart mid-day doesn't re-fire events that
+// already happened — except when there's no transcript evidence, in which
+// case the restart's own sleep-confirmation check handles it.
+const lastSleepFiredDate = new Map(); // botName → "YYYY-MM-DD"
+const lastRestartFiredDate = new Map();
+
+if (sleepTarget || dailyTarget || MAX_UPTIME_HOURS > 0) {
+  setInterval(async () => {
+    const now = new Date();
+    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const minutesNow = now.getHours() * 60 + now.getMinutes();
+
+    for (const bot of BOTS) {
+      if (inRestartGrace(bot.name)) continue;
+      if (!sessionExists(bot)) continue;
+
+      // --- Sleep trigger (catch-up: fire any time past SLEEP_AT today) ---
+      if (
+        sleepTarget &&
+        lastSleepFiredDate.get(bot.name) !== todayStr &&
+        minutesNow >= sleepTarget.h * 60 + sleepTarget.mm
+      ) {
+        // Transcript check first: if claude already has a SLEEP.md user
+        // message from today (e.g., supervisor restarted and lost memory),
+        // don't re-fire.
+        const recent = sleepTriggeredRecently(bot);
+        const alreadyToday =
+          recent.ok && sameLocalDate(recent.at, now);
+        if (!alreadyToday) {
+          fireSleep(bot);
+        }
+        lastSleepFiredDate.set(bot.name, todayStr);
+      }
+
+      // --- Restart: scheduled daily (sleep-confirmed, ≥1h old) or uptime. ---
+      let trigger = null;
+      let reason = '';
+
+      if (
+        dailyTarget &&
+        lastRestartFiredDate.get(bot.name) !== todayStr &&
+        minutesNow >= dailyTarget.h * 60 + dailyTarget.mm
+      ) {
+        const check = sleepTriggeredRecently(bot);
+        if (!check.ok) {
+          const msg = `${bot.name} daily restart skipped — ${check.reason}`;
+          console.log(`[daily-restart] ${msg}`);
+          pushToUsers(msg);
+          lastRestartFiredDate.set(bot.name, todayStr);
+        } else {
+          const sleepAgeMs = Date.now() - check.at.getTime();
+          const minAgeMs = RESTART_AFTER_SLEEP_MIN_HOURS * 3600_000;
+          if (sleepAgeMs >= minAgeMs) {
+            trigger = 'daily';
+            reason = `sleep confirmed at ${check.at.toISOString()}`;
+            lastRestartFiredDate.set(bot.name, todayStr);
+          }
+          // else: sleep still too fresh, wait for the next tick.
+        }
+      }
+
+      if (!trigger && MAX_UPTIME_HOURS > 0) {
+        const uptime = claudeUptimeSeconds(bot);
+        if (uptime !== null && uptime > MAX_UPTIME_HOURS * 3600) {
+          trigger = 'uptime';
+          reason = `uptime ${(uptime / 3600).toFixed(1)}h > ${MAX_UPTIME_HOURS}h`;
+        }
+      }
+
+      if (trigger) {
+        const msg = `${bot.name} restart [${trigger}] — ${reason}`;
+        console.log(`[${trigger}-restart] ${msg}`);
+        pushToUsers(msg);
+        markRestart(bot.name);
+        invalidateContextCache(bot.name);
+        resetRestartState(bot.name);
+        await startProcess(bot);
+      }
+    }
+  }, 60_000);
+  const parts = [];
+  if (sleepTarget) parts.push(`sleep at ${SLEEP_AT} local`);
+  if (dailyTarget)
+    parts.push(
+      `restart at ${DAILY_RESTART_AT} local (sleep ≥${RESTART_AFTER_SLEEP_MIN_HOURS}h old, window: ${SLEEP_DONE_MAX_AGE_HOURS}h)`
+    );
+  if (MAX_UPTIME_HOURS > 0) parts.push(`uptime cap: ${MAX_UPTIME_HOURS}h`);
+  console.log(`Scheduler: ${parts.join('; ')}`);
+}
+
+function sameLocalDate(a, b) {
+  return (
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate()
   );
 }
 
