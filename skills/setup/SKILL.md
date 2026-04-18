@@ -144,21 +144,24 @@ Then for each step below: TaskUpdate → `in_progress` when starting, `completed
    - "1. Looks good  2. Let me change the parent directory"
 
 10. **Generate files**:
-   
+
+   **Language policy (applies to every bot-dir file below):** the templates ship in English as a baseline. If the user chose a language other than English in step 1, translate the prose into that language as you write each file — don't leave English boilerplate in the bot's working files. Keep these in English regardless of the user's choice: file and directory names, frontmatter keys (`name`, `description`, `type`, `allowed-tools`, `user-invocable`), frontmatter `type` values (`user` / `feedback` / `project` / `reference`), journal tag syntax (`(skills: x, y)`, `(candidate-skill: <slug>)`), cron expressions, shell commands, URLs, and skill names/slugs. Section headings inside prose (e.g. `## Every heartbeat`) can be translated. `ecosystem.config.cjs` and the supervisor files in the parent directory stay English — they're plumbing, not user-facing.
+
    In the **parent directory** (current working directory):
    - Copy `$CLAUDE_PLUGIN_ROOT/supervisor/` → `supervisor/`, run `npm install`.
    - Generate `ecosystem.config.cjs` with supervisor bot token, user_id, and `BOTS` set to `"<name>:<name>:<cwd>/<name>"`. **The pm2 app name MUST be `<dirname>-supervisor`** where `<dirname>` is the project root directory name (e.g. if cwd is `/home/user/my-project`, use `my-project-supervisor`). Do NOT use the assistant name — a project can have multiple bots but only one supervisor. Before finalizing, run `pm2 jlist` to check for name collisions; if the name is taken, append a suffix or ask the user.
    
    In the **bot directory** (`<cwd>/<name>/`):
-   - Copy `$CLAUDE_PLUGIN_ROOT/template/CLAUDE.md` → `CLAUDE.md`, fill in placeholders (assistant name, user name, timezone, language, **core responsibility** from step 5). Personality and user notes go into `SOUL.md`, not here.
-   - Copy `$CLAUDE_PLUGIN_ROOT/template/IDENTITY.md` → `IDENTITY.md`, fill in name, creature, vibe, emoji, and avatar (leave avatar blank if not provided).
-   - Copy `$CLAUDE_PLUGIN_ROOT/template/SOUL.md` → `SOUL.md`, replace the top `(personality paragraph ...)` placeholder with the drafted personality from step 5, and replace the `(anything else ...)` placeholder under *Notes from the User* with the free-form notes. Keep the Core Truths and Boundaries sections as-is (they're the baseline — user can edit later).
-   - Copy `$CLAUDE_PLUGIN_ROOT/template/HEARTBEAT.md` → `HEARTBEAT.md` as-is. The agent will edit it over time.
-   - Generate `USER.md` with collected user info (preferred name, timezone, user_id, chat_id, brief intro).
+   - Copy `$CLAUDE_PLUGIN_ROOT/template/CLAUDE.md` → `CLAUDE.md`, fill in placeholders (assistant name, user name, timezone, language, **core responsibility** from step 5). Translate the prose per the language policy above. Personality and user notes go into `SOUL.md`, not here.
+   - Copy `$CLAUDE_PLUGIN_ROOT/template/IDENTITY.md` → `IDENTITY.md`, fill in name, creature, vibe, emoji, and avatar (leave avatar blank if not provided). Translate labels and prose per the language policy.
+   - Copy `$CLAUDE_PLUGIN_ROOT/template/SOUL.md` → `SOUL.md`, replace the top `(personality paragraph ...)` placeholder with the drafted personality from step 5 (write it directly in the user's language), and replace the `(anything else ...)` placeholder under *Notes from the User* with the free-form notes. Translate the Core Truths and Boundaries sections into the user's language too — they're the baseline text the user will read and edit.
+   - Copy `$CLAUDE_PLUGIN_ROOT/template/HEARTBEAT.md` → `HEARTBEAT.md`, translating the body into the user's language. The bot edits this file over time (it's the live hourly task list), so it must start in the user's language.
+   - Copy `$CLAUDE_PLUGIN_ROOT/template/SLEEP.md` → `SLEEP.md`, translating the body into the user's language. Same rule: the bot edits it over time (live nightly task list).
+   - Generate `USER.md` with collected user info (preferred name, timezone, user_id, chat_id, brief intro). Translate labels and the "About" prose per the language policy.
    - Copy `$CLAUDE_PLUGIN_ROOT/start.sh` → `start.sh`, make executable.
    - Create `memory/MEMORY.md` (empty memory index).
    - Create `journal/` directory.
-   - **Install meta-skills**: the hardcoded meta-skill list is `["evolve"]`. For each name in that list, copy `$CLAUDE_PLUGIN_ROOT/skills/<name>/` → `<bot-dir>/.claude/skills/<name>/` (mkdir -p as needed). Meta-skills are bundled by default — bots should never ship without them.
+   - **Install meta-skills**: the hardcoded meta-skill list is `["evolve"]`. For each name in that list, copy `$CLAUDE_PLUGIN_ROOT/skills/<name>/` → `<bot-dir>/.claude/skills/<name>/` (mkdir -p as needed). Heartbeat and sleep are NOT in this list — they're not skills; they're cron-driven task lists (`HEARTBEAT.md` / `SLEEP.md`) wired up by `CLAUDE.md` → "Heartbeat and Sleep".
    - **Initialize self-skills registry**: `touch <bot-dir>/.claude/skills/.self-skills` (plain text file, newline-separated skill names). Starts empty. This registry is where `evolve` appends new self-created skills; plugin-provided skills like `evolve` itself are NOT listed here.
    - Initialize git repo. Make sure `memory/`, `journal/`, `USER.md`, and `.claude/skills/` are tracked.
    - If `.zero-claw-setup.json` exists in cwd, delete it — setup state is no longer needed.

@@ -44,7 +44,7 @@ Karpathy's original pattern treats raw sources as purely human-curated and immut
 **Ownership map** — three skills, non-overlapping scope:
 
 - `llm-wiki` (this skill) → the shared knowledge vault.
-- `heartbeat` → `memory/` (user-bot relationship content). Heartbeat is who actually calls `llm-wiki` Capture/Recompile/Lint on the right cadence.
+- Heartbeat cron → `memory/` (user-bot relationship content). The heartbeat cron (via `HEARTBEAT.md`) and sleep cron (via `SLEEP.md`) are who actually call `llm-wiki` Capture/Recompile/Lint on the right cadence.
 - `evolve` → the self-skill library only (`.claude/skills/` entries listed in `.self-skills`). Not memory, not SOUL.
 
 Capture is where `memory/` and the vault touch: when today's memory maintenance finds content that's world-knowledge rather than user-bot relationship, it gets promoted from `memory/` into the vault via Capture. `SOUL.md` and `USER.md` are user-driven and framework-defined respectively — `llm-wiki` never reads or writes them.
@@ -61,7 +61,7 @@ Not in the original gist — ours, for an always-on Telegram-bot use case:
 - **Co-maintained raws** — bot can Capture durable context into the vault's raw layer, not just Ingest what the user provides.
 - **`sources:` dependency edge** in page frontmatter → the `meta.json` Makefile knows which pages go stale when a raw changes.
 - **Recompile** op (§2) — incremental invalidation of dirty pages. Runs every heartbeat (cheap, silent when clean).
-- **Heartbeat cadence** — every hour Capture+Recompile keep the wiki fresh; the last heartbeat of the day runs Lint for health review. No dedicated "Maintain" op; the heartbeat skill orchestrates directly.
+- **Heartbeat + sleep cadence** — every hour the heartbeat cron (reading `HEARTBEAT.md`) runs Capture+Recompile to keep the wiki fresh; once per night the sleep cron (reading `SLEEP.md`) runs Lint for health review. No dedicated "Maintain" op; the two task lists orchestrate directly.
 - **BM25 / vector search** via `wiki-search` (analogous to qmd; see §"Enabling vector search").
 
 **Never touch `.wiki-cache/` manually** — scripts own it.
@@ -84,7 +84,7 @@ Use when the bot has accumulated material (chat, journal, memory entry, recurrin
 
 **The boundary rule**: wiki holds **world knowledge** (correct, shareable facts about a domain). `memory/` holds **user-bot relationship content** (preferences, feedback, interaction patterns). If a piece of material would make sense to a third reader who doesn't know this user, it's wiki-class. If it only makes sense in the context of "this user with this bot," it's memory-class.
 
-**When to Capture** (any of the following). The heartbeat skill checks these at the cadence noted — see `skills/heartbeat/SKILL.md`:
+**When to Capture** (any of the following). The heartbeat and sleep cron jobs check these at the cadence noted — see `CLAUDE.md` → "Heartbeat and Sleep", and the bot's `HEARTBEAT.md` / `SLEEP.md`:
 
 *Per-heartbeat (last-hour signals):*
 
@@ -93,7 +93,7 @@ Use when the bot has accumulated material (chat, journal, memory entry, recurrin
 - The user explicitly says "remember this as a note" / "保存下来" / "记到 wiki 原始区".
 - The user sends in free-form content ("here's what I've been thinking about X...") and asks to file it.
 
-*Last-heartbeat-of-day only (fires after heartbeat's memory maintenance):*
+*Daily sleep only (fires after sleep's memory maintenance):*
 
 - Today's memory maintenance found that an entry in `memory/` is actually world-knowledge that drifted there by accident (a fact about some domain, not a user-bot relationship note). Promote it from `memory/` to the vault — then the memory cleanup can drop its redundant copy.
 
@@ -212,23 +212,23 @@ Health-check the wiki. Two layers:
 
 Report both layers together. Ask before fixing.
 
-## Heartbeat orchestration
+## Heartbeat + sleep orchestration
 
-`llm-wiki` has no dedicated "Maintain" op. The heartbeat skill is the conductor — every hour it decides whether any of the ops below should fire:
+`llm-wiki` has no dedicated "Maintain" op. The heartbeat and sleep cron jobs are the conductors:
 
-| Cadence | Action | Why |
-|---|---|---|
-| Every heartbeat | **Capture** recent durable context (if warranted), then **Ingest** each new raw, then **Recompile** | Keep raws flowing into the vault and wiki pages close to their sources. All three silent when there's nothing to do. |
-| Last heartbeat of the day | **Lint** (mechanical first, semantic when warranted) | One daily sweep for contradictions, broken links, orphan inbox, islands. Surface in the daily summary. |
+| Cadence | Caller | Action | Why |
+|---|---|---|---|
+| Every heartbeat (hourly) | `HEARTBEAT.md` | **Capture** recent durable context (if warranted), then **Ingest** each new raw, then **Recompile** | Keep raws flowing into the vault and wiki pages close to their sources. All three silent when there's nothing to do. |
+| Nightly sleep | `SLEEP.md` | **Lint** (mechanical first, semantic when warranted) | One nightly sweep for contradictions, broken links, orphan inbox, islands. Findings stashed in the journal for the morning heartbeat to surface. |
 
-See `skills/heartbeat/SKILL.md` for the exact flow. The ops themselves (§0-§4 above) don't care who called them.
+See the bot's `CLAUDE.md` → "Heartbeat and Sleep" and the live `HEARTBEAT.md` / `SLEEP.md` task lists for the exact flows. The ops themselves (§0-§4 above) don't care who called them.
 
-### Capture cadence on heartbeat
+### Capture cadence
 
-Capture runs at two cadences (see `skills/heartbeat/SKILL.md` for the actual flow):
+Capture runs at two cadences:
 
-- **Every heartbeat** — last-hour signals only: finished `learn` session, multi-turn resolution worth reusing, explicit user ask.
-- **Last heartbeat of the day, after memory maintenance** — promote `memory/` entries that turned out to be world-knowledge misfiled into private memory.
+- **Every heartbeat** (hourly) — last-hour signals only: finished `learn` session, multi-turn resolution worth reusing, explicit user ask.
+- **Daily sleep, after memory maintenance** — promote `memory/` entries that turned out to be world-knowledge misfiled into private memory.
 
 One Capture per focused topic, not one per chat.
 

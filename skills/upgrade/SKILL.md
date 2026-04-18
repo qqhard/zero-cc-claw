@@ -116,14 +116,17 @@ Components to check:
 
 **b2) pm2 collision check** — run `pm2 jlist` and check if there's already a process named `supervisor` (or the same name). Compare its `cwd` with the current project root. If it belongs to a DIFFERENT project, warn the user and do NOT restart it. Only restart the supervisor that belongs to THIS project (matched by cwd).
 
-**c) Bot CLAUDE.md** (for each bot) — check for key sections: Heartbeat, Memory System, Cron Tasks, Journal Format. **Do NOT compare personality/role/principles** — those are user customizations.
+**c) Bot CLAUDE.md** (for each bot) — check for key sections: `Heartbeat and Sleep` (older bots may only have `Heartbeat`), `Memory System`, `Cron Tasks`, `Language`. If the Heartbeat section doesn't mention the sleep cron, or the bot dir is missing `SLEEP.md`, flag it as outdated. **Do NOT compare personality/role/principles** — those are user customizations.
 
 **d) start.sh** (for each bot) — check for: TELEGRAM_STATE_DIR export, --project-dir flag.
 
 **e) Skills** — check if bot directories have:
-- `.claude/skills/heartbeat/` (core autonomous skill)
-- `.claude/skills/evolve/` (meta-skill — and any other meta-skills in the list; currently just `evolve`)
+- `.claude/skills/evolve/` (meta-skill)
 - `.claude/skills/.self-skills` (empty registry file — evolve writes to this when it creates a new skill)
+
+Older bots may also carry leftover `.claude/skills/heartbeat/` and `.claude/skills/sleep/` directories from before the mechanism was folded into `CLAUDE.md`. Flag them for removal — they're dead code now; the cron jobs read `HEARTBEAT.md` / `SLEEP.md` directly.
+
+Also check the bot root for `HEARTBEAT.md` AND `SLEEP.md` — older bots may have only `HEARTBEAT.md` (pre-split schema) and need `SLEEP.md` added while the nightly-consolidation section is removed from `HEARTBEAT.md`. Both files should contain task lists only; scope / invariants / journal format belong in `CLAUDE.md` → "Heartbeat and Sleep".
 
 For users who only want to refresh the meta-skill layer (not the whole infra), point them at `/zero-claw:upgrade-meta-skill` instead.
 
@@ -182,9 +185,23 @@ Fill placeholders using info from USER.md or existing CLAUDE.md.
 - "Show diff"
 - "Skip"
 
-**Skills** (if any of heartbeat / evolve / .self-skills are missing):
-- "Install all missing skills" — copy each missing one from `$CLAUDE_PLUGIN_ROOT/skills/<name>/` to `.claude/skills/<name>/`, and `touch .claude/skills/.self-skills` if missing
+**Skills** (if `evolve` or `.self-skills` is missing):
+- "Install" — copy `$CLAUDE_PLUGIN_ROOT/skills/evolve/` to `.claude/skills/evolve/`, and `touch .claude/skills/.self-skills` if missing
 - "Skip"
+
+**Legacy heartbeat/sleep skill dirs** (if `.claude/skills/heartbeat/` or `.claude/skills/sleep/` exists):
+- "Remove" — `rm -rf` those dirs. The mechanism now lives in `CLAUDE.md` → "Heartbeat and Sleep"; the cron reads `HEARTBEAT.md` / `SLEEP.md` directly. Keeping the old skill dirs around is harmless but confusing.
+- "Skip"
+
+**HEARTBEAT.md / SLEEP.md layout** (if `SLEEP.md` is missing, or `HEARTBEAT.md` still carries the old nightly-consolidation section):
+- "Reshape automatically" — write the new `HEARTBEAT.md` (task list only) and new `SLEEP.md` (task list only) from the templates, translating per the user's language in `USER.md`. Warn the user that custom edits inside the old nightly-consolidation section of `HEARTBEAT.md` will be lost unless they paste them into `SLEEP.md` after.
+- "Show diff" — preview old vs new before deciding.
+- "Skip" — not recommended; sleep cron will have no task list to run.
+
+**CLAUDE.md Heartbeat and Sleep section** (if the section is missing or still titled plain `Heartbeat` without the scheduling mechanism / never-dos / journal format absorbed):
+- "Inject section" — replace the old `Heartbeat` section with the new `Heartbeat and Sleep` block from `template/CLAUDE.md`. Preserve the user's cron table if they'd customized waking hours / sleep time.
+- "Show diff"
+- "Skip" — not recommended; without this, the bot won't know to register the sleep cron.
 
 **Memory/Journal** (if missing):
 - "Create structure" — create `memory/MEMORY.md`, `journal/`, `USER.md` (non-destructive, never overwrites existing files)

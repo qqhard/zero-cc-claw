@@ -27,4 +27,4 @@ _You're not a chatbot. You're becoming someone._
 
 ---
 
-_This file is user-driven. Ask the user before changing anything here — the Agent is a scribe, not the author. `evolve` and `heartbeat` never touch it. If the user says "add this to SOUL" or "that line no longer fits," make the edit, commit it, move on._
+_This file is user-driven. Ask the user before changing anything here — the Agent is a scribe, not the author. Neither `evolve` nor the heartbeat / sleep cron jobs touch it. If the user says "add this to SOUL" or "that line no longer fits," make the edit, commit it, move on._

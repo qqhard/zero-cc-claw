@@ -21,15 +21,17 @@ Plugin root is available as `$CLAUDE_PLUGIN_ROOT`.
 
 ## Skill taxonomy (for context)
 
-Zero-Claw has three skill categories:
+Zero-Claw has two skill categories plus one non-skill mechanism:
 
 | Category | Examples | Who owns them | Handled by |
 |---|---|---|---|
 | User-invocable | `setup`, `add-bot`, `upgrade`, `migrate-from-openclaw`, `upgrade-meta-skill` | Plugin | Run from plugin host |
-| Core autonomous | `heartbeat` | Plugin | Refreshed by `/zero-claw:upgrade` |
-| **Meta-skills** | `evolve` | Plugin | Refreshed by **this skill** |
+| **Meta-skills** | `evolve`, `llm-wiki`, `learn` | Plugin | Refreshed by **this skill** |
+| Autonomous cron (not a skill) | `HEARTBEAT.md`, `SLEEP.md` | Per-bot file | Refreshed by `/zero-claw:upgrade` along with `CLAUDE.md` |
 
 Meta-skills are plugin-provided tools the bot uses but cannot modify — they're third-party, with their own release cycle. `evolve` maintains the bot's self-skill library (add/edit/retire). `llm-wiki` maintains the user-chosen knowledge vault. `learn` runs Socratic learning sessions. They have zero overlap in scope.
+
+Heartbeat and sleep are NOT skills — they're cron-driven task lists living in the bot root, wired up by `CLAUDE.md` → "Heartbeat and Sleep". This skill does not touch them.
 
 ## Phase 0 — Language
 
@@ -46,13 +48,12 @@ Only ask (via AskUserQuestion: `"What language should we use? / 使用什么语�
 **As of this version, the meta-skills are:**
 
 ```
-sleep
 evolve
 llm-wiki
 learn
 ```
 
-When Zero-Claw adds a new meta-skill, update this list (one name per line).
+When Zero-Claw adds a new meta-skill, update this list (one name per line). Heartbeat and sleep are NOT meta-skills — they're cron-driven task lists wired up via `CLAUDE.md`.
 
 ## Phase 1 — Detect bot directories
 

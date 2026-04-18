@@ -28,7 +28,7 @@ Zero-Claw adds the remaining 10%:
 
 - **Supervisor** — a small Telegram bot for remote restart, status checks, and crash recovery. Because the main bot runs in tmux, you need a way to control it when it's stuck.
 - **Persistent memory** — a heartbeat-driven journal that records daily events and distills long-term knowledge. Claude Code's built-in memory is selective; the journal catches everything.
-- **Heartbeat** — hourly cron during waking hours. Sends online status, reviews conversations, maintains the journal. Last heartbeat of the day consolidates memory.
+- **Heartbeat & Sleep** — two independent crons. Heartbeat fires hourly during waking hours: online status, conversation review, journal writes. Sleep fires once per day at the end of waking hours: memory distillation, prune, `evolve`, wiki lint.
 - **CLAUDE.md template** — defines your assistant's personality, rules, and cron jobs in plain language. This *is* the app — Claude Code executes it.
 
 Your bot's capabilities grow automatically as Claude Code evolves. New tools, better reasoning, new MCP integrations — you get them for free without changing a line of code. Zero-Claw's skill system is just Claude Code's native skill format, fully compatible and reusable.
@@ -108,7 +108,7 @@ Run these in a Claude Code session once the plugin is installed.
 | `/zero-claw:upgrade` | Upgrade an existing bot to the latest template without overwriting your persona |
 | `/zero-claw:upgrade-meta-skill` | Refresh meta-skills (evolve, llm-wiki, learn) across every bot in the project |
 | `/zero-claw:migrate-from-openclaw` | Import an existing OpenClaw workspace — preserves agents, personas, memory, skills, scripts, MCPs; only asks BotFather for a supervisor if none exists |
-| `/zero-claw:evolve` | Run the evolve meta-skill manually (normally auto-triggered on the last heartbeat of the day) |
+| `/zero-claw:evolve` | Run the evolve meta-skill manually (normally auto-triggered by the nightly sleep job) |
 | `/zero-claw:llm-wiki` | Ingest notes, recompile pages, search, or lint your knowledge vault (Karpathy-style LLM wiki) |
 | `/zero-claw:learn` | Socratic learning mode — 3 consensuses / 3 controversies, layered deep-dive, 20/80, then 5 retrieval questions |
 

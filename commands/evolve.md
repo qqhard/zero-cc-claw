@@ -1,5 +1,5 @@
 ---
-description: Run the evolve meta-skill manually (normally auto-triggered by last heartbeat of the day)
+description: Run the evolve meta-skill manually (normally auto-triggered by the daily sleep job)
 argument-hint: 
 allowed-tools: Read, Write, Edit, Bash, Glob, Grep
 ---

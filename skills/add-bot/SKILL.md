@@ -80,16 +80,20 @@ Always present choices as numbered options for the selection bar.
    - **Avatar** — skip by default; only ask if the user volunteers a path or URL.
 
 6. **Generate files** in `<parent>/<agent-name-lowercase>/`:
-   - Copy `$CLAUDE_PLUGIN_ROOT/template/CLAUDE.md` → `CLAUDE.md`, fill in agent name, user info, and **core responsibility** from step 5. Personality/notes go into SOUL.md.
-   - Copy `$CLAUDE_PLUGIN_ROOT/template/IDENTITY.md` → `IDENTITY.md`, fill in name, creature, vibe, emoji, avatar.
-   - Copy `$CLAUDE_PLUGIN_ROOT/template/SOUL.md` → `SOUL.md`, drop in the personality paragraph and user notes from step 5.
-   - Copy `$CLAUDE_PLUGIN_ROOT/template/HEARTBEAT.md` → `HEARTBEAT.md` as-is.
+
+   **Language policy (applies to every file below):** templates ship in English as a baseline. If the user chose a language other than English in step 1, translate the prose into that language as you write each file. Keep file/directory names, frontmatter keys (`name`, `description`, `type`, `allowed-tools`, `user-invocable`), frontmatter `type` values, journal tag syntax (`(skills: ...)`, `(candidate-skill: ...)`), cron expressions, shell commands, URLs, and skill names/slugs in English. Section headings can be translated.
+
+   - Copy `$CLAUDE_PLUGIN_ROOT/template/CLAUDE.md` → `CLAUDE.md`, fill in agent name, user info, and **core responsibility** from step 5. Translate prose per the language policy. Personality/notes go into SOUL.md.
+   - Copy `$CLAUDE_PLUGIN_ROOT/template/IDENTITY.md` → `IDENTITY.md`, fill in name, creature, vibe, emoji, avatar. Translate labels/prose per the language policy.
+   - Copy `$CLAUDE_PLUGIN_ROOT/template/SOUL.md` → `SOUL.md`, drop in the personality paragraph and user notes from step 5 directly in the user's language, and translate the Core Truths / Boundaries baseline sections too.
+   - Copy `$CLAUDE_PLUGIN_ROOT/template/HEARTBEAT.md` → `HEARTBEAT.md`, translating the body into the user's language (the bot edits this live hourly task list over time, so it must start in their language).
+   - Copy `$CLAUDE_PLUGIN_ROOT/template/SLEEP.md` → `SLEEP.md`, translating the body into the user's language. Same rationale as HEARTBEAT.md.
    - **USER.md** — ask the user via AskUserQuestion: "How should USER.md be shared with the sibling bot?"
      1. **Copy** (default, safer) — independent file; edits to one bot won't leak into the other.
      2. **Symlink** — single source of truth; both bots see the same file. Pick this only if you want changes to propagate.
    - Copy `$CLAUDE_PLUGIN_ROOT/start.sh` → `start.sh`, make executable. **Verify** the copied file does NOT contain `--project-dir` (older versions had this invalid flag).
    - Create `memory/MEMORY.md`, `journal/`.
-   - **Install meta-skills**: the hardcoded meta-skill list is `["evolve"]`. For each name, copy `$CLAUDE_PLUGIN_ROOT/skills/<name>/` → `<bot-dir>/.claude/skills/<name>/` (mkdir -p as needed).
+   - **Install meta-skills**: the hardcoded meta-skill list is `["evolve"]`. For each name, copy `$CLAUDE_PLUGIN_ROOT/skills/<name>/` → `<bot-dir>/.claude/skills/<name>/` (mkdir -p as needed). Heartbeat and sleep are not skills — their mechanism lives in `CLAUDE.md`, their task lists in `HEARTBEAT.md` / `SLEEP.md`.
    - **Initialize self-skills registry**: `touch <bot-dir>/.claude/skills/.self-skills` (empty, newline-separated). This is where `evolve` appends bot-created skills.
    - Initialize git repo.
 

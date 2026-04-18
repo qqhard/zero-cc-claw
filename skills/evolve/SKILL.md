@@ -1,6 +1,6 @@
 ---
 name: evolve
-description: "Daily skill-library maintenance. Upgrades (adds/edits) skills when patterns emerge, retires skills unused for 90+ days. Triggered by heartbeat's last-of-day run, or manually via 'evolve' / 'self-review'. Only touches `.claude/skills/` — memory, SOUL, and USER belong to other owners."
+description: "Daily skill-library maintenance. Upgrades (adds/edits) skills when patterns emerge, retires skills unused for 90+ days. Triggered by the nightly sleep cron (`SLEEP.md`), or manually via 'evolve' / 'self-review'. Only touches `.claude/skills/` — memory, SOUL, and USER belong to other owners."
 user-invocable: true
 allowed-tools:
   - Read
@@ -28,7 +28,7 @@ Daily skill-library maintenance. The one job: keep the set of self-skills aligne
 
 - ❌ `SOUL.md` — user-driven, Agent writes only on explicit direction.
 - ❌ `USER.md` — updated reactively by the main Agent when user shares profile info; never by evolve.
-- ❌ `memory/*` — heartbeat's domain.
+- ❌ `memory/*` — owned by the heartbeat cron (hourly captures, via `HEARTBEAT.md`) and sleep cron (nightly distillation, via `SLEEP.md`).
 - ❌ `IDENTITY.md`, `CLAUDE.md` — framework definitions, user-driven.
 - ❌ `journal/*` — raw facts, never rewrite.
 - ❌ Any skill **not** in `.self-skills` (plugin-provided skills are third-party — never modify).

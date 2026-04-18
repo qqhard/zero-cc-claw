@@ -21,7 +21,7 @@ Milestones:
 - [x] M4 — lint (`wiki-lint`)
 - [x] M5 — vector aux (opt-in `@xenova/transformers`)
 - [x] M6 — embedding model config (`.wiki-cache/config.json`)
-- [x] M7 — heartbeat orchestration: every-heartbeat Capture + Ingest + Recompile, EOD Lint
+- [x] M7 — heartbeat + sleep orchestration: hourly Capture + Ingest + Recompile (heartbeat), daily Lint (sleep)
 
 ## Install
 
@@ -45,7 +45,7 @@ cd <bot>/.claude/skills/llm-wiki && npm install @xenova/transformers
 
 Raws are co-maintained: you drop in articles / notes / clips; the bot also Captures durable context (learn sessions, multi-turn resolutions, promotable memory) into `<vault>/captured/YYYY/MM/...` on every heartbeat. Both paths flow through the same Ingest.
 
-**Ownership**: `llm-wiki` operates only on its configured vault. The bot's own surfaces are owned elsewhere — `memory/` by `heartbeat`, `.claude/skills/` (self-skills) by `evolve`, `SOUL.md` by the user directly, `USER.md` by the main Agent reactively. `llm-wiki` never reads or writes any of them.
+**Ownership**: `llm-wiki` operates only on its configured vault. The bot's own surfaces are owned elsewhere — `memory/` by the heartbeat / sleep crons (via `HEARTBEAT.md` / `SLEEP.md`), `.claude/skills/` (self-skills) by `evolve`, `SOUL.md` by the user directly, `USER.md` by the main Agent reactively. `llm-wiki` never reads or writes any of them.
 
 ## CLI
 
@@ -85,11 +85,11 @@ All scripts accept `--json` for machine-readable output.
 
 See [`SKILL.md`](SKILL.md) for the LLM-facing compiler rules: Capture / Ingest / Recompile / Query / Lint.
 
-## Heartbeat integration
+## Heartbeat + sleep integration
 
-zero-claw's `heartbeat` orchestrates the wiki directly — no dedicated Maintain op:
+zero-claw's heartbeat and sleep cron jobs orchestrate the wiki directly — no dedicated Maintain op:
 
-- **Every heartbeat**: if material qualifies (finished learn session, multi-turn resolution, promotable memory entry), Capture it → Ingest → Recompile. Silent when nothing qualifies.
-- **Last heartbeat of the day**: Lint (mechanical + semantic) and surface findings + `_wiki/inbox.md` orphans in the daily summary.
+- **Every heartbeat** (hourly): if material qualifies (finished learn session, multi-turn resolution, promotable memory entry), Capture it → Ingest → Recompile. Silent when nothing qualifies.
+- **Daily sleep**: Lint (mechanical + semantic) and surface findings + `_wiki/inbox.md` orphans in the daily summary.
 
 Auto-recompile is gated to simple cases (≤3 sources, small raw diff). Dense-page rewrites and orphan ingests always surface for user review — never silently applied.
