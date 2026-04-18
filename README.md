@@ -11,6 +11,7 @@ In a Claude Code session:
 ```
 /plugin marketplace add qqhard/zero-claw
 /plugin install zero-claw
+/reload-plugin
 /zero-claw:setup
 ```
 
