@@ -1,7 +1,11 @@
 #!/usr/bin/env node
 
 import { Telegraf } from 'telegraf';
+import net from 'node:net';
+import fs from 'node:fs';
+import path from 'node:path';
 import { createBotManager } from './bots.mjs';
+import { createCommands, UserError } from './commands.mjs';
 
 // --- Config ---
 // Supervisor bot token is OPTIONAL. When absent the supervisor runs headless:
@@ -9,6 +13,9 @@ import { createBotManager } from './bots.mjs';
 // just can't reach them from Telegram. `pushToUsers` falls back to a no-op so
 // the bot-manager layer is oblivious; console.log inside `bots.mjs` is still
 // the source of truth for event traces in pm2 logs.
+//
+// The local Unix-socket surface below is independent of the Telegram bot —
+// the `/zero-claw:supervisor` slash command works even in headless mode.
 const BOT_TOKEN = process.env.SUPERVISOR_BOT_TOKEN;
 const HEADLESS = !BOT_TOKEN;
 
@@ -74,12 +81,6 @@ function parseBots() {
 }
 
 const BOTS = parseBots();
-const botsByName = new Map(BOTS.map((b) => [b.name, b]));
-
-function getBot(name) {
-  if (!name && BOTS.length === 1) return BOTS[0];
-  return botsByName.get(name) || null;
-}
 
 // --- Telegram push ---
 // onEvent callback handed to the manager. In headless mode the manager never
@@ -92,11 +93,17 @@ function pushToUsers(text) {
   }
 }
 
-// --- Bot manager ---
+// --- Bot manager + shared command layer ---
 const manager = createBotManager({
   bots: BOTS,
   config: MANAGER_CONFIG,
   onEvent: pushToUsers,
+});
+
+const commands = createCommands({
+  bots: BOTS,
+  manager,
+  config: MANAGER_CONFIG,
 });
 
 // --- Telegram Bot ---
@@ -105,74 +112,16 @@ const manager = createBotManager({
 // is not possible at runtime.
 const tg = HEADLESS ? null : new Telegraf(BOT_TOKEN);
 
-function parseBotArg(ctx) {
-  const text = ctx.message.text;
-  const parts = text.split(/\s+/).slice(1);
-  const name = parts[0];
-  if (name) {
-    const bot = getBot(name);
-    if (!bot) {
-      ctx.reply(
-        `Unknown bot: ${name}\nAvailable: ${BOTS.map((b) => b.name).join(', ')}`
-      );
-      return null;
-    }
-    return bot;
+async function dispatchTelegram(ctx, cmd) {
+  const args = ctx.message.text.split(/\s+/).slice(1);
+  try {
+    const text = await commands.dispatch(cmd, args);
+    await ctx.reply(text);
+  } catch (err) {
+    if (err instanceof UserError) return ctx.reply(err.message);
+    console.error(`[tg:${cmd}]`, err);
+    await ctx.reply(`Internal error: ${err.message}`);
   }
-  if (BOTS.length === 1) return BOTS[0];
-  ctx.reply(
-    `Multiple bots configured. Specify which one:\n${BOTS.map((b) => `  ${b.name}`).join('\n')}\n\nExample: /status ${BOTS[0].name}`
-  );
-  return null;
-}
-
-function escapeHtml(s) {
-  return String(s)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
-}
-
-function formatTokens(n) {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
-  return String(n);
-}
-
-async function formatContextLine(bot) {
-  const usage = await manager.getContextUsage(bot);
-  if (!usage) return '<i>context: query failed</i>';
-  const age = Math.round((Date.now() - usage.at) / 1000);
-  const tokens = `${formatTokens(usage.tokens)} / ${formatTokens(usage.limit)}`;
-  const model = usage.model
-    ? `\nmodel: <code>${escapeHtml(usage.model)}</code>`
-    : '';
-  return (
-    `context: <b>${tokens}</b> (${usage.pct}%) <i>· ${age}s ago · restart &gt;${CONTEXT_THRESHOLD}%</i>` +
-    model
-  );
-}
-
-async function formatStatusLine(bot) {
-  const claudePid = manager.getClaudePid(bot);
-  const header = claudePid
-    ? `<b>${escapeHtml(bot.name)}</b> — running`
-    : `<b>${escapeHtml(bot.name)}</b> — <b>stopped</b>`;
-  const parts = [header];
-  if (claudePid) parts.push(`pid: <code>${claudePid}</code>`);
-  if (!manager.sessionExists(bot)) parts.push('<i>tmux session not found</i>');
-  const state = manager.getRestartState(bot.name);
-  if (state.abandoned) {
-    parts.push(
-      `<i>auto-restart disabled (${MANAGER_CONFIG.MAX_CONSECUTIVE_RESTARTS} failures) — /start ${escapeHtml(bot.name)} to re-enable</i>`
-    );
-  } else if (state.failures > 0) {
-    parts.push(
-      `<i>recent restarts: ${state.failures}/${MANAGER_CONFIG.MAX_CONSECUTIVE_RESTARTS}</i>`
-    );
-  }
-  if (claudePid) parts.push(await formatContextLine(bot));
-  return parts.join('\n');
 }
 
 if (!HEADLESS) {
@@ -181,171 +130,86 @@ if (!HEADLESS) {
     return next();
   });
 
-  tg.command('restart', async (ctx) => {
-    const bot = parseBotArg(ctx);
-    if (!bot) return;
-    const msg = await ctx.reply(`Restarting ${bot.name}...`);
-    manager.unmarkStopped(bot.name);
-    manager.markRestart(bot.name);
-    manager.resetRestartState(bot.name);
-    manager.invalidateContextCache(bot.name);
-    await manager.startProcess(bot);
-    await ctx.telegram.editMessageText(
-      ctx.chat.id,
-      msg.message_id,
-      null,
-      `${bot.name} restarted`
-    );
-  });
-
-  tg.command('stop', async (ctx) => {
-    const bot = parseBotArg(ctx);
-    if (!bot) return;
-    if (!manager.sessionExists(bot)) return ctx.reply(`${bot.name} not running`);
-    await manager.killProcess(bot);
-    manager.resetRestartState(bot.name);
-    manager.invalidateContextCache(bot.name);
-    manager.markStopped(bot.name);
-    await ctx.reply(`${bot.name} stopped`);
-  });
-
-  tg.command('start', async (ctx) => {
-    const bot = parseBotArg(ctx);
-    if (!bot) return;
-    if (manager.isRunning(bot)) return ctx.reply(`${bot.name} already running`);
-    manager.unmarkStopped(bot.name);
-    manager.startProcess(bot);
-    manager.markRestart(bot.name);
-    manager.resetRestartState(bot.name);
-    manager.invalidateContextCache(bot.name);
-    await ctx.reply(`${bot.name} started`);
-  });
-
-  tg.command('status', async (ctx) => {
-    const text = ctx.message.text;
-    const arg = text.split(/\s+/)[1];
-
-    if (!arg && BOTS.length > 1) {
-      const lines = await Promise.all(BOTS.map((b) => formatStatusLine(b)));
-      return ctx.replyWithHTML(lines.join('\n\n'));
-    }
-
-    const bot = parseBotArg(ctx);
-    if (!bot) return;
-    await ctx.replyWithHTML(await formatStatusLine(bot));
-  });
-
-  tg.command('logs', async (ctx) => {
-    const bot = parseBotArg(ctx);
-    if (!bot) return;
-    const content = manager.capturePane(bot, 80);
-    if (!content?.trim()) return ctx.reply('No logs');
-    const text = content.length > 4000 ? '...' + content.slice(-4000) : content;
-    await ctx.reply(text);
-  });
-
-  tg.command('screen', async (ctx) => {
-    const bot = parseBotArg(ctx);
-    if (!bot) return;
-    const content = manager.capturePane(bot, 30);
-    if (!content?.trim()) return ctx.reply('No screen');
-    await ctx.reply(content);
-  });
-
-  tg.command('send', async (ctx) => {
-    // /send <bot> <text>  or  /send <text> (single bot)
-    const parts = ctx.message.text.replace(/^\/send\s*/, '');
-    let bot, text;
-    if (BOTS.length > 1) {
-      const firstWord = parts.split(/\s+/)[0];
-      bot = getBot(firstWord);
-      text = bot ? parts.slice(firstWord.length).trim() : null;
-      if (!bot) {
-        return ctx.reply(
-          `Specify bot: /send <bot> <text>\nAvailable: ${BOTS.map((b) => b.name).join(', ')}`
-        );
-      }
-    } else {
-      bot = BOTS[0];
-      text = parts;
-    }
-    if (!text) return ctx.reply('Usage: /send <text>');
-    manager.sendKeys(bot, text);
-    await ctx.reply('Sent');
-  });
-
-  tg.command('monitor', async (ctx) => {
-    const parts = ctx.message.text.split(/\s+/).slice(1);
-    const action = (parts[0] || 'status').toLowerCase();
-
-    if (action === 'status') {
-      const running = manager.listMonitors();
-      if (running.length === 0) {
-        return ctx.reply('Monitor: off\nUsage: /monitor on [bot] [seconds]');
-      }
-      const lines = running.map(
-        ({ name, seconds }) => `${name}: every ${seconds}s`
-      );
-      return ctx.reply('Monitor:\n' + lines.join('\n'));
-    }
-
-    if (action !== 'on' && action !== 'off') {
-      return ctx.reply('Usage: /monitor [on|off|status] [bot] [seconds]');
-    }
-
-    let bot;
-    let seconds;
-    const maybeBot = parts[1];
-    if (maybeBot && getBot(maybeBot)) {
-      bot = getBot(maybeBot);
-      if (action === 'on' && parts[2]) seconds = parseInt(parts[2]);
-    } else if (maybeBot && /^\d+$/.test(maybeBot) && BOTS.length === 1) {
-      bot = BOTS[0];
-      if (action === 'on') seconds = parseInt(maybeBot);
-    } else if (!maybeBot && BOTS.length === 1) {
-      bot = BOTS[0];
-    } else {
-      return ctx.reply(
-        `Specify bot: /monitor ${action} <bot>${action === 'on' ? ' [seconds]' : ''}\nAvailable: ${BOTS.map((b) => b.name).join(', ')}`
-      );
-    }
-
-    if (action === 'on') {
-      const interval =
-        Number.isFinite(seconds) && seconds >= 5
-          ? seconds
-          : manager.DEFAULT_MONITOR_SECONDS;
-      manager.startMonitor(bot, interval);
-      return ctx.reply(`Monitoring ${bot.name} every ${interval}s`);
-    }
-
-    if (manager.stopMonitor(bot)) {
-      return ctx.reply(`Stopped monitoring ${bot.name}`);
-    }
-    return ctx.reply(`${bot.name} was not being monitored`);
-  });
-
-  tg.command('help', (ctx) => {
-    const botHint =
-      BOTS.length > 1
-        ? `\n\nBots: ${BOTS.map((b) => b.name).join(', ')}\nAdd bot name after command, e.g. /status ${BOTS[0].name}`
-        : '';
-    ctx.reply(
-      '/status - Status, restart counter, context usage\n' +
-        '/restart - Restart bot\n' +
-        '/stop - Stop bot\n' +
-        '/start - Start bot (re-enables auto-restart)\n' +
-        '/logs - Recent logs (80 lines)\n' +
-        '/screen - Current screen\n' +
-        '/send <text> - Type into TUI\n' +
-        '/monitor [on|off|status] [bot] [seconds] - Push new pane output\n' +
-        '/help - This message' +
-        botHint
-    );
-  });
+  for (const cmd of [
+    'status',
+    'restart',
+    'start',
+    'stop',
+    'logs',
+    'screen',
+    'send',
+    'monitor',
+    'help',
+  ]) {
+    tg.command(cmd, (ctx) => dispatchTelegram(ctx, cmd));
+  }
 
   tg.on('text', (ctx) => ctx.reply('Send /help for available commands'));
 }
+
+// --- Local Unix-socket surface ---
+// Same command dispatcher as Telegram — used by `supervisor/cli.mjs` so the
+// `/zero-claw:supervisor` slash command drives the exact same code paths as
+// the Telegram bot (shared manager state, shared restart counter, shared
+// monitor registry). Listens at `<cwd>/.zero-claw-supervisor.sock`; cwd is
+// set by pm2 from ecosystem.config.cjs → `cwd: __dirname`, i.e. the project
+// root. Permissions are 0600: anyone with filesystem access to the project
+// dir can manage its bots, no wider.
+const SOCKET_PATH = path.join(process.cwd(), '.zero-claw-supervisor.sock');
+
+function unlinkSocket() {
+  try {
+    fs.unlinkSync(SOCKET_PATH);
+  } catch {
+    /* already gone */
+  }
+}
+
+unlinkSocket(); // clear stale socket from a previous crash
+
+const socketServer = net.createServer((sock) => {
+  let buf = '';
+  sock.setEncoding('utf-8');
+  sock.on('data', (chunk) => {
+    buf += chunk;
+    const nl = buf.indexOf('\n');
+    if (nl < 0) return;
+    const line = buf.slice(0, nl);
+    (async () => {
+      let req;
+      try {
+        req = JSON.parse(line);
+      } catch (err) {
+        sock.end(JSON.stringify({ error: `malformed request: ${err.message}` }) + '\n');
+        return;
+      }
+      try {
+        const text = await commands.dispatch(req.cmd, req.args || []);
+        sock.end(JSON.stringify({ text }) + '\n');
+      } catch (err) {
+        if (err instanceof UserError) {
+          sock.end(JSON.stringify({ error: err.message }) + '\n');
+        } else {
+          console.error('[socket]', err);
+          sock.end(JSON.stringify({ error: `internal: ${err.message}` }) + '\n');
+        }
+      }
+    })();
+  });
+  sock.on('error', () => {}); // ignore client disconnects
+});
+
+socketServer.listen(SOCKET_PATH, () => {
+  try {
+    fs.chmodSync(SOCKET_PATH, 0o600);
+  } catch {
+    /* chmod may fail on some filesystems; not critical */
+  }
+  console.log(`Socket listening at ${SOCKET_PATH}`);
+});
+socketServer.on('error', (err) => {
+  console.error(`[socket] listen failed: ${err.message}`);
+});
 
 // --- Command menu (makes `/` autocomplete work in Telegram) ---
 const COMMAND_MENU = [
@@ -360,14 +224,21 @@ const COMMAND_MENU = [
   { command: 'help', description: 'Show help' },
 ];
 
+// --- Shutdown ---
+function shutdown(signal) {
+  unlinkSocket();
+  if (tg) tg.stop(signal);
+  process.exit(0);
+}
+process.once('SIGINT', () => shutdown('SIGINT'));
+process.once('SIGTERM', () => shutdown('SIGTERM'));
+
 // --- Launch ---
 if (!HEADLESS) {
   tg.launch();
   tg.telegram
     .setMyCommands(COMMAND_MENU)
     .catch((err) => console.error('setMyCommands failed:', err.message));
-  process.once('SIGINT', () => tg.stop('SIGINT'));
-  process.once('SIGTERM', () => tg.stop('SIGTERM'));
 }
 console.log(
   `Supervisor started${HEADLESS ? ' [headless — no remote control bot]' : ''} | bots: ${BOTS.map((b) => `${b.name}@${b.target}`).join(', ')}`
