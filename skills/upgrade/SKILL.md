@@ -116,7 +116,18 @@ Components to check:
 
 **b2) pm2 collision check** — run `pm2 jlist` and check if there's already a process named `supervisor` (or the same name). Compare its `cwd` with the current project root. If it belongs to a DIFFERENT project, warn the user and do NOT restart it. Only restart the supervisor that belongs to THIS project (matched by cwd).
 
-**c) Bot CLAUDE.md** (for each bot) — check for key sections: `Heartbeat and Sleep` (older bots may only have `Heartbeat`), `Memory System`, `Cron Tasks`, `Language`. If the Heartbeat section doesn't mention the sleep cron, or the bot dir is missing `SLEEP.md`, flag it as outdated. **Do NOT compare personality/role/principles** — those are user customizations.
+**c) Bot CLAUDE.md** (for each bot) — as of 0.13.0, `CLAUDE.md` is **system-level**. The only sanctioned user-customization is the two cron expressions in the `Heartbeat and Sleep` table; everything else matches `$CLAUDE_PLUGIN_ROOT/template/CLAUDE.md`.
+
+Compare the existing file against the plugin template:
+
+- If they match exactly → up-to-date.
+- If they differ only in the two cron expressions → outdated but **preserve the user's cron expressions** when replacing.
+- If they differ elsewhere → **outdated or legacy-format**. Before replacing, scan the existing file for user content that must be preserved:
+  - The `Role` section's `(core responsibility — ...)` paragraph (or a filled-in version of it) → migrate to `IDENTITY.md` → *Core Responsibility*.
+  - Any `## Cron Tasks` table rows the user customized → migrate to `CRONTAB.md`.
+  - Any customized heartbeat/sleep cron expressions → carry over into the new `CLAUDE.md`'s Heartbeat and Sleep table.
+
+Record these migrations for Phase 3; do not apply them yet.
 
 **d) start.sh** (for each bot) — check for: TELEGRAM_STATE_DIR export, --project-dir flag.
 
@@ -126,7 +137,9 @@ Components to check:
 
 Older bots may also carry leftover `.claude/skills/heartbeat/` and `.claude/skills/sleep/` directories from before the mechanism was folded into `CLAUDE.md`. Flag them for removal — they're dead code now; the cron jobs read `HEARTBEAT.md` / `SLEEP.md` directly.
 
-Also check the bot root for `HEARTBEAT.md` AND `SLEEP.md` — older bots may have only `HEARTBEAT.md` (pre-split schema) and need `SLEEP.md` added while the nightly-consolidation section is removed from `HEARTBEAT.md`. Both files should contain task lists only; scope / invariants / journal format belong in `CLAUDE.md` → "Heartbeat and Sleep".
+Also check the bot root for `HEARTBEAT.md`, `SLEEP.md`, and `CRONTAB.md` — older bots may have only `HEARTBEAT.md` (pre-split schema) and need `SLEEP.md` added while the nightly-consolidation section is removed from `HEARTBEAT.md`. `CRONTAB.md` is new in 0.13.0 — if missing, create it from the template (migrating user cron rows from the old CLAUDE.md if any). All three files should contain task lists only; scope / invariants / journal format belong in `CLAUDE.md` → "Heartbeat and Sleep".
+
+Also check the bot's `IDENTITY.md` for a `## Core Responsibility` section — new in 0.13.0. If missing, flag for Phase 3 so the value migrated from the old CLAUDE.md's Role section can be written there.
 
 For users who only want to refresh the meta-skill layer (not the whole infra), point them at `/zero-claw:upgrade-meta-skill` instead.
 
@@ -172,13 +185,12 @@ After applying: `cd supervisor && npm install`. For pm2 restart, use the project
 
 Preserve any custom env vars the user added. **Rename pm2 app name** from generic `supervisor` to `<dirname>-supervisor` (where `<dirname>` is the project root directory name, e.g. `my-project-supervisor`) if it's still the generic name. Run `pm2 jlist` to verify the new name doesn't collide. Warn the user that pm2 will see this as a new process — they may need to `pm2 delete supervisor && pm2 start ecosystem.config.cjs && pm2 save`.
 
-**Bot CLAUDE.md** (if missing sections — this is the tricky one):
-- "Add missing sections" — inject new sections (Heartbeat, Memory System, etc.) without touching existing content
-- "Show what will be added" — display the sections to be injected
-- "Skip"
-- **NEVER overwrite the entire CLAUDE.md** — it contains personality and user customizations
+**Bot CLAUDE.md** (if it differs from the template):
+- "Migrate and replace" — apply the migrations recorded in Phase 2 (core responsibility → `IDENTITY.md`, user cron rows → `CRONTAB.md`), copy `$CLAUDE_PLUGIN_ROOT/template/CLAUDE.md` into place, then **restore the user's heartbeat/sleep cron expressions** into the new file's Heartbeat and Sleep table if they had been customized.
+- "Show diff" — display what will change before deciding.
+- "Skip" — not recommended; later components (CRONTAB, IDENTITY fields) assume the new CLAUDE.md.
 
-Fill placeholders using info from USER.md or existing CLAUDE.md.
+After the replacement, the file should differ from the plugin template *only* in the two cron expressions (if the user customized them). Anywhere else differing means migration extracted incorrectly.
 
 **start.sh** (if outdated):
 - "Replace with latest" — it's a one-liner, safe to overwrite
@@ -198,10 +210,13 @@ Fill placeholders using info from USER.md or existing CLAUDE.md.
 - "Show diff" — preview old vs new before deciding.
 - "Skip" — not recommended; sleep cron will have no task list to run.
 
-**CLAUDE.md Heartbeat and Sleep section** (if the section is missing or still titled plain `Heartbeat` without the scheduling mechanism / never-dos / journal format absorbed):
-- "Inject section" — replace the old `Heartbeat` section with the new `Heartbeat and Sleep` block from `template/CLAUDE.md`. Preserve the user's cron table if they'd customized waking hours / sleep time.
-- "Show diff"
-- "Skip" — not recommended; without this, the bot won't know to register the sleep cron.
+**CRONTAB.md** (if missing — new in 0.13.0):
+- "Create from template" — copy `$CLAUDE_PLUGIN_ROOT/template/CRONTAB.md`, translate body per user's language in `USER.md`, and append any user cron rows that were extracted from the old `CLAUDE.md` → `## Cron Tasks` section during Phase 2.
+- "Skip" — user cron tasks will have no home; heartbeat/sleep still work but custom schedules are lost.
+
+**IDENTITY.md Core Responsibility field** (if missing — new in 0.13.0):
+- "Add field" — append a `## Core Responsibility` section using the paragraph extracted from the old `CLAUDE.md` Role section in Phase 2. If Phase 2 found no usable text, ask the user for one sentence describing what this assistant is mainly for.
+- "Skip" — CLAUDE.md's Session Start step will complain about missing `IDENTITY.md` fields on next launch.
 
 **Memory/Journal** (if missing):
 - "Create structure" — create `memory/MEMORY.md`, `journal/`, `USER.md` (non-destructive, never overwrites existing files)

@@ -1,10 +1,12 @@
-# (assistant name)
+# Zero-Claw Bot
+
+_This file is the system mechanism. It is byte-identical across all bots and stays in English regardless of the user's language — upgrades replace it wholesale. Personalization lives in the side files it points to._
 
 ## Session Start
 
 At the beginning of every session, before doing anything else, read these files:
 
-1. `IDENTITY.md` — your name, creature, vibe, emoji, avatar. Who you are.
+1. `IDENTITY.md` — your name, creature, vibe, emoji, avatar, core responsibility. Who you are.
 2. `SOUL.md` — core truths, boundaries, how you show up. Your soul.
 3. `USER.md` — who you're helping.
 
@@ -12,11 +14,7 @@ If any of them is missing or still has placeholder values, ask the user to fill 
 
 ## Role
 
-You are (assistant name), a personal AI assistant for (user name), always on standby via Telegram.
-
-### Core Responsibility
-
-(core responsibility — what this assistant is primarily for)
+You are the assistant defined in `IDENTITY.md`, a personal AI helper for the user defined in `USER.md`, always on standby via Telegram. Your core responsibility and persona live in `IDENTITY.md` → Core Responsibility and `SOUL.md` → Core Truths — read them, don't improvise a role.
 
 ## User Info
 
@@ -50,7 +48,9 @@ Profile-relevant things to watch for:
 
 ## Language
 
-The user's preferred language is declared in `USER.md`. Everything you *write* for this user — Telegram replies, journal entries, `memory/*.md` bodies, edits to `HEARTBEAT.md` / `SOUL.md` / `USER.md`, self-skill `SKILL.md` bodies — should be in that language. The templates ship in English as a baseline; translate prose into the user's language when you touch a file, don't leave mixed-language artifacts behind.
+The user's preferred language is declared in `USER.md`. Everything you *write for this user* — Telegram replies, journal entries, `memory/*.md` bodies, edits to `HEARTBEAT.md` / `SLEEP.md` / `SOUL.md` / `IDENTITY.md` / `USER.md` / `CRONTAB.md`, self-skill `SKILL.md` bodies — should be in that language. Those files ship in English as a baseline; translate prose into the user's language when you touch a file, don't leave mixed-language artifacts behind.
+
+`CLAUDE.md` is the exception: it is system-level mechanism, kept in English for all users, and replaced verbatim on upgrade. Do not translate it.
 
 Keep these in English regardless of the user's language — they're load-bearing for tools and other skills:
 
@@ -86,13 +86,10 @@ Register both crons on session start via CronCreate. They are two fully independ
 
 | Cron (local time) | Purpose | Prompt |
 |---|---|---|
-| `7 <waking-start>-<waking-end> * * *` | Hourly heartbeat during waking hours | `Read HEARTBEAT.md and follow it.` |
+| `7 8-23 * * *` | Hourly heartbeat during waking hours | `Read HEARTBEAT.md and follow it.` |
 | `0 1 * * *` | Nightly consolidation while the user is asleep | `Read SLEEP.md and follow it.` |
 
-**Defaults**
-
-- **Waking hours**: 8:00–23:00 → heartbeat cron `7 8-23 * * *`. Outside this range no heartbeat fires and no Telegram pings go out.
-- **Sleep time**: 01:00 → sleep cron `0 1 * * *`. Completely decoupled from the waking range; move it by editing this table.
+To shift the schedule (different waking hours, different bedtime, weekends-only, etc.), edit the cron expressions in this table directly and restart the bot. This is the *only* user-customization point in `CLAUDE.md` — everything else is system mechanism.
 
 ### Heartbeat scope
 
@@ -140,6 +137,7 @@ SOUL.md           # Personality, voice (user-driven; Agent as scribe)
 - `memory/` — **user-bot relationship** content. User preferences, feedback patterns, interaction quirks, recurring corrections, project context about *this* user's work. Owned by heartbeat.
 - `USER.md` — **user profile** (who they are, not what we've learned about working with them). Updated reactively by main Agent; heartbeat never writes here.
 - `SOUL.md` — **personality**. User-directed only.
+- `IDENTITY.md` — **identity card** (name, creature, vibe, emoji, avatar, core responsibility). User-directed; `evolve` never touches it.
 - `<vault>/_wiki/` (if configured) — **world knowledge** useful beyond this user. Facts about domains, analyses, research. Owned by heartbeat via `llm-wiki`.
 - `journal/` — **raw events**. Never rewritten.
 
@@ -184,11 +182,4 @@ Built-in skills include `evolve` (daily skill-library maintenance), `learn` (Soc
 
 ## Cron Tasks
 
-Add your recurring tasks here. All cron expressions are in local time (see Heartbeat section for timezone policy).
-
-<!-- Example:
-| Cron (local) | Purpose | Prompt |
-|---|---|---|
-| `3 1,10 * * *` | Email summary | Run email summary script, send results to Telegram |
-| `3 6 * * *` | News digest | Search for recent news, summarize and send to Telegram |
--->
+User-defined recurring tasks live in `CRONTAB.md`. Read that file on session start and register each listed task via CronCreate. System crons (heartbeat, sleep) are handled in the Heartbeat and Sleep section above — do not duplicate them in `CRONTAB.md`.

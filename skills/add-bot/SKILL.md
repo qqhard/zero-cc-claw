@@ -71,7 +71,7 @@ Always present choices as numbered options for the selection bar.
 
    c. **Anything else** — "Anything else you want them to know or embody? (can be skipped)" Short free-form note.
 
-   Draft a 2-4 sentence **Personality** paragraph tying name + tone + notes together. Show it and ask "1. Looks good  2. Let me tweak it". Save the three pieces for file generation.
+   Draft a 2-4 sentence **Personality** paragraph tying name + tone + notes together. Show it and ask "1. Looks good  2. Let me tweak it". Save the three pieces — **core responsibility** → `IDENTITY.md`, **personality + notes** → `SOUL.md`. `CLAUDE.md` gets no customization.
 
    Then collect **Identity card** fields for `IDENTITY.md`:
    - **Creature** — what kind of being (offer 3-4 options seeded by the name + "Other").
@@ -81,13 +81,14 @@ Always present choices as numbered options for the selection bar.
 
 6. **Generate files** in `<parent>/<agent-name-lowercase>/`:
 
-   **Language policy (applies to every file below):** templates ship in English as a baseline. If the user chose a language other than English in step 1, translate the prose into that language as you write each file. Keep file/directory names, frontmatter keys (`name`, `description`, `type`, `allowed-tools`, `user-invocable`), frontmatter `type` values, journal tag syntax (`(skills: ...)`, `(candidate-skill: ...)`), cron expressions, shell commands, URLs, and skill names/slugs in English. Section headings can be translated.
+   **Language policy (applies to every file below EXCEPT `CLAUDE.md`):** templates ship in English as a baseline. If the user chose a language other than English in step 1, translate the prose into that language as you write each file. `CLAUDE.md` is the one exception — system mechanism, copied verbatim and kept in English across all bots. Keep file/directory names, frontmatter keys (`name`, `description`, `type`, `allowed-tools`, `user-invocable`), frontmatter `type` values, journal tag syntax (`(skills: ...)`, `(candidate-skill: ...)`), cron expressions, shell commands, URLs, and skill names/slugs in English. Section headings can be translated.
 
-   - Copy `$CLAUDE_PLUGIN_ROOT/template/CLAUDE.md` → `CLAUDE.md`, fill in agent name, user info, and **core responsibility** from step 5. Translate prose per the language policy. Personality/notes go into SOUL.md.
-   - Copy `$CLAUDE_PLUGIN_ROOT/template/IDENTITY.md` → `IDENTITY.md`, fill in name, creature, vibe, emoji, avatar. Translate labels/prose per the language policy.
+   - Copy `$CLAUDE_PLUGIN_ROOT/template/CLAUDE.md` → `CLAUDE.md` **verbatim**. Do NOT fill placeholders and do NOT translate — no placeholders exist anymore; it's the system mechanism, identical across all bots.
+   - Copy `$CLAUDE_PLUGIN_ROOT/template/IDENTITY.md` → `IDENTITY.md`, fill in name, creature, vibe, emoji, avatar, and the **Core Responsibility** paragraph from step 5a (in the user's language). Translate labels/prose per the language policy.
    - Copy `$CLAUDE_PLUGIN_ROOT/template/SOUL.md` → `SOUL.md`, drop in the personality paragraph and user notes from step 5 directly in the user's language, and translate the Core Truths / Boundaries baseline sections too.
    - Copy `$CLAUDE_PLUGIN_ROOT/template/HEARTBEAT.md` → `HEARTBEAT.md`, translating the body into the user's language (the bot edits this live hourly task list over time, so it must start in their language).
    - Copy `$CLAUDE_PLUGIN_ROOT/template/SLEEP.md` → `SLEEP.md`, translating the body into the user's language. Same rationale as HEARTBEAT.md.
+   - Copy `$CLAUDE_PLUGIN_ROOT/template/CRONTAB.md` → `CRONTAB.md`, translating the body into the user's language. Empty table by default.
    - **USER.md** — ask the user via AskUserQuestion: "How should USER.md be shared with the sibling bot?"
      1. **Copy** (default, safer) — independent file; edits to one bot won't leak into the other.
      2. **Symlink** — single source of truth; both bots see the same file. Pick this only if you want changes to propagate.
