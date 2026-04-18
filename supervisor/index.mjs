@@ -52,13 +52,13 @@ function parseBots() {
   if (botsEnv) {
     return botsEnv.split(',').map((entry) => {
       const [name, session, workDir] = entry.split(':');
-      return { name, session, target: `${session}:0.0`, workDir };
+      return { name, session, target: session, workDir };
     });
   }
   // Legacy single-bot fallback
   const session = process.env.TMUX_SESSION || 'bot';
   const workDir = process.env.WORK_DIR || process.cwd();
-  return [{ name: session, session, target: `${session}:0.0`, workDir }];
+  return [{ name: session, session, target: session, workDir }];
 }
 
 const BOTS = parseBots();

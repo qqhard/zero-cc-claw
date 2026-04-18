@@ -294,16 +294,16 @@ Then for each step below: TaskUpdate → `in_progress` when starting, `completed
       ```bash
       tmux new-session -d -s <name> -c <working-dir> './start.sh'
       ```
-    - **Watch the pane until the bot is ready** — use `tmux capture-pane -t <name>:0.0 -p` in a short polling loop (every ~2s, up to ~30s). What you look for depends on `MODE` from step 9b:
+    - **Watch the pane until the bot is ready** — use `tmux capture-pane -t <name> -p` in a short polling loop (every ~2s, up to ~30s). Target the **session** only (no `:0.0` / `:1.1` suffix) — the user may have `base-index` / `pane-base-index` set to 1 in their `~/.tmux.conf`, in which case `:0.0` doesn't exist. Bare `-t <session>` routes to the active window's active pane and works regardless. What you look for depends on `MODE` from step 9b:
       - **`MODE = bypass`**: there is a first-run permission prompt to handle, then the ready prompt.
         1. **Permission modal** — Claude Code under `--dangerously-skip-permissions` shows a confirmation on first launch (text like "Yes, I accept" / "No, exit"). If you see it, send `2` + Enter to accept:
            ```bash
-           tmux send-keys -t <name>:0.0 -l '2' && tmux send-keys -t <name>:0.0 Enter
+           tmux send-keys -t <name> -l '2' && tmux send-keys -t <name> Enter
            ```
            Then keep polling.
         2. **Ready prompt** — input box visible, no modal. Once you see it, send `start` to trigger the SessionStart hook (registers heartbeat and cron tasks):
            ```bash
-           tmux send-keys -t <name>:0.0 -l 'start' && tmux send-keys -t <name>:0.0 Enter
+           tmux send-keys -t <name> -l 'start' && tmux send-keys -t <name> Enter
            ```
       - **`MODE = granular`**: no permission modal appears (we removed `--dangerously-skip-permissions` and pre-wrote `.claude/settings.json`). Just wait for the ready prompt and send `start` the same way.
 

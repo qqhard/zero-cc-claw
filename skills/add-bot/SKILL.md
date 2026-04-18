@@ -111,9 +111,9 @@ Always present choices as numbered options for the selection bar.
       ```bash
       tmux new-session -d -s <name> -c <bot-dir> './start.sh'
       ```
-      Wait ~15s for Claude Code to finish booting, then send `start` to fire the SessionStart hook:
+      Wait ~15s for Claude Code to finish booting, then send `start` to fire the SessionStart hook. Target the **session** only — no `:0.0` / `:1.1` suffix — so it works whether or not the user has `base-index` / `pane-base-index` set in `~/.tmux.conf`:
       ```bash
-      tmux send-keys -t <name>:0.0 -l 'start' && tmux send-keys -t <name>:0.0 Enter
+      tmux send-keys -t <name> -l 'start' && tmux send-keys -t <name> Enter
       ```
 
    b. **Write the Telegram token directly** — do NOT use `/telegram:configure` via send-keys. That skill hardcodes `~/.claude/channels/telegram/.env` and ignores `TELEGRAM_STATE_DIR`, so it would clobber the sibling bot's global config and the new bot's server (which reads from `<bot-dir>/.telegram/`) would still see no token. Instead, write directly:
@@ -124,7 +124,7 @@ Always present choices as numbered options for the selection bar.
       ```
       The bot's `start.sh` exports `TELEGRAM_STATE_DIR="$(pwd)/.telegram"`, so the plugin server picks this up automatically. Restart the bot session so the new env is loaded:
       ```bash
-      tmux send-keys -t <name>:0.0 'C-c' && sleep 1 && tmux send-keys -t <name>:0.0 -l './start.sh' && tmux send-keys -t <name>:0.0 Enter
+      tmux send-keys -t <name> 'C-c' && sleep 1 && tmux send-keys -t <name> -l './start.sh' && tmux send-keys -t <name> Enter
       ```
 
    c. **Wait for the user to pair (NOT the bot)** — say to the user **explicitly**:
