@@ -129,7 +129,7 @@ Compare the existing file against the plugin template:
 
 Record these migrations for Phase 3; do not apply them yet.
 
-**d) start.sh** (for each bot) — check for: TELEGRAM_STATE_DIR export, --project-dir flag, `.claude-crash.log` stderr redirect (the only durable crash evidence once the tmux pane scrolls away).
+**d) start.sh** (for each bot) — check for: TELEGRAM_STATE_DIR export, no `--project-dir` flag (older versions had this invalid arg), `claude ...` followed by `exec bash -l` as the final two lines (0.18.3+ — keeps tmux pane alive when claude exits, consolidates lifecycle into a single code path), and no crash-log / `.claude-crash.log` boilerplate (removed in 0.18.3 — lifecycle concerns belong in supervisor). Pre-0.18.3 bots will have `exec claude ...` as the final line — replace with the template when upgrading.
 
 **e) Skills** — check if bot directories have:
 - `.claude/skills/evolve/` (meta-skill)

@@ -298,6 +298,18 @@ export function createBotManager({ bots, config, onEvent = () => {} }) {
   // Always fresh pty: kill any existing session, then create a new one with
   // start.sh as the initial command. Avoids send-keys racing a live TUI and
   // sidesteps claude-code's occasional raw-mode loss (see killProcess).
+  //
+  // start.sh itself ends with `exec bash -l`, so when claude exits (crash,
+  // /exit, Ctrl-C×2) the pane drops into a live, interactive shell instead
+  // of dying and cascading the whole tmux server down. Consequences:
+  //   * An attached user stays attached and gets a usable pane (can poke
+  //     around, tail logs) while watchdog works on the restart.
+  //   * Watchdog sees sessionExists=true + isRunning=false and takes the
+  //     clean "died, restarting" path, not "session gone".
+  //   * When the supervisor kill-session runs to restart, the bash drops
+  //     on SIGHUP and the new pane cleanup path stays unchanged.
+  //   * A user who launches ./start.sh manually under their own tmux gets
+  //     the same behavior — one code path, no divergence.
   async function startProcess(bot) {
     try {
       await killProcess(bot);
