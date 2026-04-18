@@ -850,6 +850,12 @@ if (sleepTarget || dailyTarget || MAX_UPTIME_HOURS > 0) {
       if (!sessionExists(bot)) continue;
 
       // --- Sleep trigger (catch-up: fire any time past SLEEP_AT today) ---
+      // Track whether we fired sleep in THIS tick so the restart block below
+      // can distinguish "transcript has no sleep entry because bot never
+      // slept today" (legitimate skip) from "transcript lags our send-keys
+      // by a tick" (must not mark restart done — retry next tick). See
+      // Case B in docs: boot ≥ DAILY_RESTART_AT after host was off.
+      let firedSleepThisTick = false;
       if (
         sleepTarget &&
         lastSleepFiredDate.get(bot.name) !== todayStr &&
@@ -861,8 +867,18 @@ if (sleepTarget || dailyTarget || MAX_UPTIME_HOURS > 0) {
         const recent = sleepTriggeredRecently(bot);
         const alreadyToday =
           recent.ok && sameLocalDate(recent.at, now);
-        if (!alreadyToday) {
-          fireSleep(bot);
+        if (alreadyToday) {
+          console.log(
+            `[sleep] ${bot.name}: already fired today per transcript (at ${recent.at.toISOString()}), skipping catch-up`
+          );
+        } else {
+          const ctx = recent.ok
+            ? `transcript stale (latest SLEEP.md at ${recent.at.toISOString()})`
+            : recent.reason;
+          console.log(
+            `[sleep] ${bot.name}: catch-up fire (minutesNow=${minutesNow}, target=${sleepTarget.h * 60 + sleepTarget.mm}; ${ctx})`
+          );
+          firedSleepThisTick = fireSleep(bot);
         }
         lastSleepFiredDate.set(bot.name, todayStr);
       }
@@ -878,19 +894,36 @@ if (sleepTarget || dailyTarget || MAX_UPTIME_HOURS > 0) {
       ) {
         const check = sleepTriggeredRecently(bot);
         if (!check.ok) {
-          const msg = `${bot.name} daily restart skipped — ${check.reason}`;
-          console.log(`[daily-restart] ${msg}`);
-          pushToUsers(msg);
-          lastRestartFiredDate.set(bot.name, todayStr);
+          if (firedSleepThisTick) {
+            // Case B: sleep was just sent via tmux send-keys this tick, but
+            // claude hasn't echoed it into the jsonl transcript yet. Do NOT
+            // mark today's restart done — let the next tick see the entry
+            // and fall through to the "sleep too fresh" branch below, which
+            // keeps re-checking until the entry is ≥1h old.
+            console.log(
+              `[daily-restart] ${bot.name}: holding — sleep fired this tick (${check.reason}); transcript lag expected, will retry next tick`
+            );
+          } else {
+            const msg = `${bot.name} daily restart skipped — ${check.reason}`;
+            console.log(`[daily-restart] ${msg}`);
+            pushToUsers(msg);
+            lastRestartFiredDate.set(bot.name, todayStr);
+          }
         } else {
           const sleepAgeMs = Date.now() - check.at.getTime();
           const minAgeMs = RESTART_AFTER_SLEEP_MIN_HOURS * 3600_000;
           if (sleepAgeMs >= minAgeMs) {
             trigger = 'daily';
-            reason = `sleep confirmed at ${check.at.toISOString()}`;
+            reason = `sleep confirmed at ${check.at.toISOString()} (age ${(sleepAgeMs / 3600_000).toFixed(2)}h)`;
             lastRestartFiredDate.set(bot.name, todayStr);
+          } else {
+            // Sleep still too fresh — wait for the next tick. Logged so
+            // post-mortems can see the scheduler is actively waiting rather
+            // than stuck.
+            console.log(
+              `[daily-restart] ${bot.name}: holding — sleep at ${check.at.toISOString()} is ${(sleepAgeMs / 60_000).toFixed(1)}m old, need ≥${(minAgeMs / 60_000).toFixed(0)}m`
+            );
           }
-          // else: sleep still too fresh, wait for the next tick.
         }
       }
 
