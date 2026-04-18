@@ -46,6 +46,7 @@ Only ask (via AskUserQuestion: `"What language should we use? / 使用什么语�
 **As of this version, the meta-skills are:**
 
 ```
+sleep
 evolve
 llm-wiki
 learn
@@ -83,10 +84,11 @@ bot-c/evolve     up-to-date
 
 No per-bot prompting. For every bot with any outdated/missing meta-skill:
 
-1. Backup each existing `SKILL.md` to `SKILL.md.bak.$(date +%Y%m%d-%H%M%S)` before overwriting.
+1. **Git pre-snapshot** (backup via git, never `.bak` files): in `<bot-dir>`, check it's a git repo (`git rev-parse --git-dir`); if not, `git init && git add -A && git commit -m "chore: init before meta-skill upgrade"`. If the working tree is dirty, commit it with `chore: pre-meta-skill-upgrade snapshot` so the user has a clean restore point. To undo, `git revert` or `git reset --hard <sha>`.
 2. Copy the meta-skill folder from `$CLAUDE_PLUGIN_ROOT/skills/<name>/` to `<bot-dir>/.claude/skills/<name>/` (mkdir -p as needed). **Exclude `node_modules/`** when copying — it's not portable across machines.
 3. If the copied skill has a `package.json`, run `npm install --omit=optional` inside `<bot-dir>/.claude/skills/<name>/`. Record the exit status for Phase 4.
 4. Ensure `<bot-dir>/.claude/skills/.self-skills` exists (create empty if missing — this is the registry `evolve` writes to).
+5. Commit the refreshed meta-skills with `chore: refresh meta-skills (<names>)` so the change is tracked and reversible.
 
 Meta-skills have zero user customization, so refresh is safe and doesn't need confirmation.
 
