@@ -30,7 +30,7 @@ Zero-Claw adds the remaining 10%:
 - **Supervisor** — a small Telegram bot for remote restart, status checks, and crash recovery. Because the main bot runs in tmux, you need a way to control it when it's stuck.
 - **Persistent memory** — a heartbeat-driven journal that records daily events and distills long-term knowledge. Claude Code's built-in memory is selective; the journal catches everything.
 - **Heartbeat & Sleep** — two independent crons. Heartbeat fires hourly during waking hours: online status, conversation review, journal writes. Sleep fires once per day at the end of waking hours: memory distillation, prune, `evolve`, wiki lint.
-- **Template files** — `CLAUDE.md` (system mechanism), `IDENTITY.md`, `SOUL.md`, `USER.md`, `HEARTBEAT.md`, `SLEEP.md`, `CRONTAB.md`. Behavior is defined in plain markdown; Claude Code executes it directly.
+- **Template files** — `CLAUDE.md` (system mechanism), `SOUL.md`, `USER.md`, `HEARTBEAT.md`, `SLEEP.md`, `CRONTAB.md`. Behavior is defined in plain markdown; Claude Code executes it directly.
 
 Your bot's capabilities grow automatically as Claude Code evolves. New tools, better reasoning, new MCP integrations — you get them for free without changing a line of code. Zero-Claw's skill system is just Claude Code's native skill format, fully compatible and reusable.
 
@@ -113,7 +113,7 @@ Run these in a Claude Code session once the plugin is installed.
 | `/zero-claw:llm-wiki` | Ingest notes, recompile pages, search, or lint your knowledge vault (Karpathy-style LLM wiki) |
 | `/zero-claw:learn` | Socratic learning mode — 3 consensuses / 3 controversies, layered deep-dive, 20/80, then 5 retrieval questions |
 
-The upgrade wizard detects your current setup, shows what's changed, and lets you choose what to update. As of 0.13.0 `CLAUDE.md` is system-level and replaced wholesale; personal files (`SOUL.md`, `IDENTITY.md`, `USER.md`, `HEARTBEAT.md`, `SLEEP.md`, `CRONTAB.md`) are never overwritten — the wizard migrates any content from legacy `CLAUDE.md` sections into the right homes before replacing.
+The upgrade wizard detects your current setup, shows what's changed, and lets you choose what to update. As of 0.13.0 `CLAUDE.md` is system-level and replaced wholesale; personal files (`SOUL.md`, `USER.md`, `HEARTBEAT.md`, `SLEEP.md`, `CRONTAB.md`) are never overwritten — the wizard migrates any content from legacy `CLAUDE.md` sections into the right homes before replacing. Bots upgraded past 0.15.0 will have their old `IDENTITY.md` folded into `SOUL.md` and the file removed.
 
 ## Extending Your Bot
 
@@ -123,7 +123,7 @@ The upgrade wizard detects your current setup, shows what's changed, and lets yo
 
 **Add cron jobs** — Edit `CRONTAB.md`, add rows to the task table.
 
-**Change personality** — Edit `SOUL.md` for voice/values, `IDENTITY.md` for the identity card. `CLAUDE.md` is the system mechanism and stays untouched.
+**Change personality** — Edit `SOUL.md` — it carries the identity card (name, creature, vibe, emoji, avatar), core responsibility, core truths, and boundaries in one file. `CLAUDE.md` is the system mechanism and stays untouched.
 
 ## Project Structure
 
@@ -143,8 +143,7 @@ zero-claw/                            (Claude Code plugin)
 │   └── index.mjs                     # Supervisor bot
 ├── template/
 │   ├── CLAUDE.md                     # System mechanism (identical per bot; upgraded by replacement)
-│   ├── IDENTITY.md                   # Name, creature, vibe, emoji, avatar, core responsibility
-│   ├── SOUL.md                       # Core truths, boundaries, personality
+│   ├── SOUL.md                       # Identity + personality + boundaries in one file
 │   ├── HEARTBEAT.md                  # Self-editable heartbeat checklist
 │   ├── SLEEP.md                      # Self-editable nightly checklist
 │   ├── CRONTAB.md                    # User-defined cron tasks
@@ -156,7 +155,7 @@ zero-claw/                            (Claude Code plugin)
 ## Design Principles
 
 1. **Don't build what exists** — Claude Code is the brain, Telegram is the mouth, tmux is the body. The only custom code is the supervisor.
-2. **Markdown is the app** — Behavior defined in natural language across a handful of plain files. `CLAUDE.md` is the mechanism; `IDENTITY.md` / `SOUL.md` / `USER.md` / `CRONTAB.md` carry personalization.
+2. **Markdown is the app** — Behavior defined in natural language across a handful of plain files. `CLAUDE.md` is the mechanism; `SOUL.md` / `USER.md` / `CRONTAB.md` carry personalization.
 3. **Evolve with the platform** — No abstraction layers. When Claude Code gets better, your bot gets better. Skills are native Claude Code skills.
 4. **Memory follows git** — `journal/`, `memory/`, `USER.md` are git-tracked. Clone the repo on a new machine, your assistant remembers everything.
 5. **Minimal code, maximum leverage** — If Claude Code can do it via markdown instructions, don't write code for it.

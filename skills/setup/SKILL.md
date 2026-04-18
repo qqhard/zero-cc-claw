@@ -123,11 +123,11 @@ Then for each step below: TaskUpdate → `in_progress` when starting, `completed
 
 4. **Name your assistant**: Ask the user to name their assistant. Suggest 3-5 names from mythology, folklore, or fiction — pick randomly from diverse cultures and pantheons each time (Greek, Norse, Egyptian, Hindu, Chinese, Japanese, Celtic, Mesopotamian, etc.). For each suggestion, give a one-line reason why the name fits an AI assistant (e.g. knowledge, wisdom, communication, protection). Let the user pick one or type their own. Save the chosen name — it will be used to suggest Telegram bot usernames next.
 
-5. **Shape the persona**: Now that the assistant has a name, give it a personality. **Keep this to TWO rounds of AskUserQuestion** — persona is refinement, not the main event, and every extra round pushes users toward "just pick anything." Users can always edit `SOUL.md` / `IDENTITY.md` later.
+5. **Shape the persona**: Now that the assistant has a name, give it a personality. **ONE AskUserQuestion call, five tabs on one screen.** Persona is a single big question with orthogonal dimensions — not a series of refining rounds. Do not split this into multiple rounds, and do not ask variants of the same dimension twice (e.g. "personality" in one round and "vibe tags" in the next — that's the same question asked twice, and it trains the user to pick anything). Users can always edit `SOUL.md` later.
 
-   **Round 1 — Role + tone (two questions on one screen).** Use a single AskUserQuestion call with two questions:
+   Single AskUserQuestion with these five questions (tabs):
 
-   a. **Core responsibility** — "What's this assistant mainly for?" Offer options tailored to typical uses:
+   a. **Role** — "What's this assistant mainly for?" Offer options tailored to typical uses:
       - General life assistant (chat, reminders, errands)
       - Research & knowledge companion
       - Writing & editing partner
@@ -135,7 +135,7 @@ Then for each step below: TaskUpdate → `in_progress` when starting, `completed
       - Productivity & task manager
       - Other (type your own)
 
-   b. **Personality preference** — "How should they feel to talk to?" Offer flavors inspired by the chosen name when possible (e.g. if Thoth, lean scholarly; if Loki, lean playful). Options like:
+   b. **Speaking style** — "How should they sound when they talk?" Offer flavors inspired by the chosen name when possible (e.g. if Thoth, lean scholarly; if Loki, lean playful). Options like:
       - Warm and encouraging
       - Formal and precise
       - Playful and witty
@@ -143,19 +143,39 @@ Then for each step below: TaskUpdate → `in_progress` when starting, `completed
       - Blunt and efficient
       - Other (type your own)
 
-   **Round 2 — Identity card (three questions on one screen, all with "Use default" as first option).** Single AskUserQuestion call, seeded by the name/role chosen above:
+   c. **Thinking style** — "How should they reason through things?" This is distinct from speaking style — it's about *how they form* a recommendation, not how they phrase it:
+      - Systematic and structured (weighs options, lays out trade-offs)
+      - Intuitive and fast (goes with the gut, refines on pushback)
+      - Skeptical and probing (questions assumptions before committing)
+      - Exploratory and associative (connects ideas across domains)
+      - Pragmatic and bottom-line (skips analysis, says the answer)
+      - Other (type your own)
 
-   - **Creature** — what kind of being are they? First option: `Use default (<auto-picked from name>)`. Then 3-4 presets seeded by the name (e.g. for Thoth: "digital scribe", "archive keeper"; for Loki: "trickster in the wires"). Plus "Other — type your own".
-   - **Vibe tags** — 2-3 short adjectives. First option: `Use default (<pragmatic, terse, warm>)` derived from tone choice in Round 1. Plus 3 alternatives + "Other".
-   - **Emoji** — signature emoji. First option: `Use default (<auto-picked>)`. Plus 3 alternatives + "Other". Include "None" as its own option.
+   d. **Execution habits** — "How should they interact with you while working?" Orthogonal to both above — this is about *conversational rhythm*, not content:
+      - Ask one question at a time, wait for each answer
+      - Ask a batch of related questions up front, then proceed
+      - Proceed on reasonable assumptions, check in only at decision points
+      - Always confirm before taking any external action (send, post, commit)
+      - Move fast, apologize later (surface the action, not the permission)
+      - Other (type your own)
 
-   **Do NOT ask a separate "paragraph confirm" round.** Draft the 2-4 sentence Personality paragraph yourself from Round 1 + the name's cultural background, and write it straight into `SOUL.md`. Tell the user in the wrap-up: *"I've drafted a personality paragraph into `SOUL.md` — edit it anytime."*
+   e. **Anything else** — free-form additions. "Anything else you want them to embody, know, or avoid?" First option: `Skip (leave blank)`. Then 2-3 concrete example options to prompt thinking (e.g. "Never pretend to know — say 'I'm not sure'", "Always show their work when reasoning", "Keep replies under 3 lines unless asked for more"). Plus "Other (type your own)".
 
-   **Do NOT ask a free-form "anything else" round.** Users who want to add context can do so by editing `SOUL.md` later; most users have nothing to say here, and making it a required prompt produces empty answers. Leave the *Notes from the User* section in `SOUL.md` with a short placeholder comment telling the user how to add their own notes.
+   **Derive, don't ask** for the identity-card surface attributes — they're auto-filled into `SOUL.md`'s header bullets:
+   - **Creature** — auto-pick from the name's cultural background (e.g. Thoth → "digital scribe"; Loki → "trickster in the wires").
+   - **Vibe tags** — 2-3 adjectives auto-derived from the speaking-style + thinking-style answers.
+   - **Emoji** — auto-pick one emoji that fits the name or role.
+   - **Avatar** — skipped by default; only ask if the user volunteers a path or URL.
 
-   **Avatar** is skipped by default; only ask if the user volunteers a path or URL.
+   **Do NOT ask a separate "paragraph confirm" round.** Draft the 2-4 sentence Core Truths paragraph yourself from the five answers + the name's cultural background, and write it straight into `SOUL.md`.
 
-   After these two rounds, save: core responsibility → `IDENTITY.md`; personality paragraph + (empty) notes → `SOUL.md`; creature / vibe / emoji → `IDENTITY.md`.
+   In the wrap-up, tell the user in one line: *"I've filled in `SOUL.md` — identity card, core responsibility, personality paragraph. Edit anytime."*
+
+   Everything lands in one file, `SOUL.md`:
+   - name / creature / vibe / emoji / avatar → header bullets
+   - role answer → `## Core Responsibility` paragraph
+   - speaking + thinking + execution answers woven together → `## Core Truths` personality paragraph (above the baseline bullet principles)
+   - free-form extras → `## Notes from the User` (leave placeholder text if the user picked Skip)
 
 6. **Create two Telegram bots**: You need two bots. Explain why:
    - **Main bot** — your assistant's face, for daily conversation.
@@ -209,8 +229,12 @@ Then for each step below: TaskUpdate → `in_progress` when starting, `completed
    
    In the **bot directory** (`<cwd>/<name>/`):
    - Copy `$CLAUDE_PLUGIN_ROOT/template/CLAUDE.md` → `CLAUDE.md` **verbatim**. Do NOT fill any placeholders and do NOT translate it — this file has no placeholders anymore; it's the system mechanism, identical across all bots.
-   - Copy `$CLAUDE_PLUGIN_ROOT/template/IDENTITY.md` → `IDENTITY.md`, fill in name, creature, vibe, emoji, avatar (leave blank if not provided), and the **Core Responsibility** paragraph drafted from step 5a (write it in the user's language). Translate labels and prose per the language policy.
-   - Copy `$CLAUDE_PLUGIN_ROOT/template/SOUL.md` → `SOUL.md`, replace the top `(personality paragraph ...)` placeholder with the drafted personality from step 5 (write it directly in the user's language). Leave the `(anything else ...)` placeholder under *Notes from the User* as-is (translated to the user's language) — setup no longer collects free-form notes here, and this placeholder doubles as an invite for the user to fill in later. Translate the Core Truths and Boundaries sections into the user's language too — they're the baseline text the user will read and edit.
+   - Copy `$CLAUDE_PLUGIN_ROOT/template/SOUL.md` → `SOUL.md` and fill it in from the step 5 answers, in the user's language:
+     - Header bullets — name, creature (auto-picked), vibe (auto-derived), emoji (auto-picked), avatar (leave blank if not provided).
+     - `## Core Responsibility` — the paragraph drafted from step 5a.
+     - `## Core Truths` — replace the top `(personality paragraph ...)` placeholder with the drafted personality (speaking + thinking + execution woven together). Keep the baseline bullet principles (Be genuinely helpful / Have opinions / …), translated into the user's language.
+     - `## Boundaries` — translate the baseline bullets into the user's language.
+     - `## Notes from the User` — if the user provided free-form extras in step 5e, insert them; otherwise leave the `(anything else ...)` placeholder in place (translated) as an invite for the user to fill in later.
    - Copy `$CLAUDE_PLUGIN_ROOT/template/HEARTBEAT.md` → `HEARTBEAT.md`, translating the body into the user's language. The bot edits this file over time (it's the live hourly task list), so it must start in the user's language.
    - Copy `$CLAUDE_PLUGIN_ROOT/template/SLEEP.md` → `SLEEP.md`, translating the body into the user's language. Same rule: the bot edits it over time (live nightly task list).
    - Copy `$CLAUDE_PLUGIN_ROOT/template/CRONTAB.md` → `CRONTAB.md`, translating the body into the user's language. Leaves the table empty by default — the user (or the bot, at user's request) adds rows later.

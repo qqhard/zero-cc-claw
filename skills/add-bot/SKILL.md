@@ -51,9 +51,9 @@ Always present choices as numbered options for the selection bar.
 
 4. **Name the new agent**: Suggest 3-5 mythology/folklore names (different from existing sibling bots — check parent's `ecosystem.config.cjs` to avoid duplicates). Give a one-line reason for each. Let the user pick or type their own.
 
-5. **Shape the persona**: Same three-question flow as the main setup. Use AskUserQuestion with numbered options; always include "Other — type your own":
+5. **Shape the persona**: Same ONE-round, five-tab flow as `/zero-claw:setup` step 5. Single AskUserQuestion call with five orthogonal tabs — role / speaking style / thinking style / execution habits / anything else. Always include "Other — type your own" on each tab. Bias the role options toward specialists since this is a sibling bot:
 
-   a. **Core responsibility** — "What's this agent mainly for?" Since this is an additional bot, bias options toward specialists:
+   a. **Role** — "What's this agent mainly for?"
       - Research & knowledge companion
       - Writing & editing partner
       - Coding & engineering sidekick
@@ -61,31 +61,33 @@ Always present choices as numbered options for the selection bar.
       - General life assistant
       - Other (type your own)
 
-   b. **Personality preference** — "How should they feel to talk to?" Tailor to the chosen name's cultural background when possible:
-      - Warm and encouraging
-      - Formal and precise
-      - Playful and witty
-      - Calm and contemplative
-      - Blunt and efficient
-      - Other (type your own)
+   b. **Speaking style** — tone options same as setup step 5b (warm / formal / playful / calm / blunt / other).
 
-   c. **Anything else** — "Anything else you want them to know or embody? (can be skipped)" Short free-form note.
+   c. **Thinking style** — reasoning options same as setup step 5c (systematic / intuitive / skeptical / exploratory / pragmatic / other).
 
-   Draft a 2-4 sentence **Personality** paragraph tying name + tone + notes together. Show it and ask "1. Looks good  2. Let me tweak it". Save the three pieces — **core responsibility** → `IDENTITY.md`, **personality + notes** → `SOUL.md`. `CLAUDE.md` gets no customization.
+   d. **Execution habits** — rhythm options same as setup step 5d (one-at-a-time / batch / proceed-on-assumptions / confirm-first / move-fast / other).
 
-   Then collect **Identity card** fields for `IDENTITY.md`:
-   - **Creature** — what kind of being (offer 3-4 options seeded by the name + "Other").
-   - **Vibe tags** — 2-3 short adjectives matching the Personality paragraph (offer presets + "Other").
-   - **Emoji** — signature emoji (offer 3-4 that fit the name/creature + "Other").
+   e. **Anything else** — free-form additions. First option: `Skip (leave blank)`. Then 2-3 concrete prompts, plus "Other".
+
+   **Derive, don't ask** for the identity-card surface attributes — they're auto-filled into `SOUL.md`'s header bullets:
+   - **Creature** — auto-pick from the name's cultural background.
+   - **Vibe tags** — 2-3 adjectives auto-derived from the speaking + thinking answers.
+   - **Emoji** — auto-pick one that fits the name or role.
    - **Avatar** — skip by default; only ask if the user volunteers a path or URL.
+
+   Draft a 2-4 sentence Core Truths paragraph from the five answers + the name's cultural background. Write everything straight into `SOUL.md` in step 6 — no separate "confirm paragraph" round. `CLAUDE.md` gets no customization.
 
 6. **Generate files** in `<parent>/<agent-name-lowercase>/`:
 
    **Language policy (applies to every file below EXCEPT `CLAUDE.md`):** templates ship in English as a baseline. If the user chose a language other than English in step 1, translate the prose into that language as you write each file. `CLAUDE.md` is the one exception — system mechanism, copied verbatim and kept in English across all bots. Keep file/directory names, frontmatter keys (`name`, `description`, `type`, `allowed-tools`, `user-invocable`), frontmatter `type` values, journal tag syntax (`(skills: ...)`, `(candidate-skill: ...)`), cron expressions, shell commands, URLs, and skill names/slugs in English. Section headings can be translated.
 
    - Copy `$CLAUDE_PLUGIN_ROOT/template/CLAUDE.md` → `CLAUDE.md` **verbatim**. Do NOT fill placeholders and do NOT translate — no placeholders exist anymore; it's the system mechanism, identical across all bots.
-   - Copy `$CLAUDE_PLUGIN_ROOT/template/IDENTITY.md` → `IDENTITY.md`, fill in name, creature, vibe, emoji, avatar, and the **Core Responsibility** paragraph from step 5a (in the user's language). Translate labels/prose per the language policy.
-   - Copy `$CLAUDE_PLUGIN_ROOT/template/SOUL.md` → `SOUL.md`, drop in the personality paragraph and user notes from step 5 directly in the user's language, and translate the Core Truths / Boundaries baseline sections too.
+   - Copy `$CLAUDE_PLUGIN_ROOT/template/SOUL.md` → `SOUL.md` and fill it in from the step 5 answers, in the user's language:
+     - Header bullets — name, creature (auto-picked), vibe (auto-derived), emoji (auto-picked), avatar (leave blank if not provided).
+     - `## Core Responsibility` — paragraph from step 5a.
+     - `## Core Truths` — replace the personality paragraph placeholder with the drafted personality (speaking + thinking + execution woven together); translate the baseline bullet principles.
+     - `## Boundaries` — translate the baseline bullets.
+     - `## Notes from the User` — drop in step 5e free-form extras if any; otherwise leave the placeholder (translated) as an invite.
    - Copy `$CLAUDE_PLUGIN_ROOT/template/HEARTBEAT.md` → `HEARTBEAT.md`, translating the body into the user's language (the bot edits this live hourly task list over time, so it must start in their language).
    - Copy `$CLAUDE_PLUGIN_ROOT/template/SLEEP.md` → `SLEEP.md`, translating the body into the user's language. Same rationale as HEARTBEAT.md.
    - Copy `$CLAUDE_PLUGIN_ROOT/template/CRONTAB.md` → `CRONTAB.md`, translating the body into the user's language. Empty table by default.

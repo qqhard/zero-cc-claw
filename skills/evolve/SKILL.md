@@ -31,7 +31,7 @@ Daily skill-library maintenance. The one job: keep the set of self-skills aligne
 - ❌ `SOUL.md` — user-driven, Agent writes only on explicit direction.
 - ❌ `USER.md` — updated reactively by the main Agent when user shares profile info; never by evolve.
 - ❌ `memory/*` — owned by the heartbeat cron (hourly captures, via `HEARTBEAT.md`) and sleep cron (nightly distillation, via `SLEEP.md`).
-- ❌ `IDENTITY.md`, `CLAUDE.md` — framework definitions, user-driven.
+- ❌ `CLAUDE.md` — framework definition, system-level mechanism.
 - ❌ `journal/*` — raw facts, never rewrite.
 - ❌ Any skill **not** in `.self-skills` (plugin-provided skills are third-party — never modify).
 

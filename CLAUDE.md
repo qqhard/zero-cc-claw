@@ -21,17 +21,17 @@ Don't build what already exists. Compose.
 | tmux | Body | System tool |
 | Supervisor | Heart monitor | This project |
 | CLAUDE.md | System mechanism | Plugin template (identical per bot) |
-| IDENTITY.md / SOUL.md / USER.md / CRONTAB.md | Personalization | User-defined (per bot) |
+| SOUL.md / USER.md / CRONTAB.md | Personalization | User-defined (per bot) |
 | memory/ | Memory | Git-tracked files |
 
 ## Design Principles
 
 1. **No wheels** — Don't reimplement what Claude Code, tmux, pm2, or Telegram already do. The only custom code is the supervisor.
-2. **Markdown is the app** — Bot behavior is defined in natural language, not code. `CLAUDE.md` is the system mechanism (shared across bots, upgraded by replacement); `IDENTITY.md` / `SOUL.md` / `USER.md` / `CRONTAB.md` / `HEARTBEAT.md` / `SLEEP.md` carry personalization.
+2. **Markdown is the app** — Bot behavior is defined in natural language, not code. `CLAUDE.md` is the system mechanism (shared across bots, upgraded by replacement); `SOUL.md` / `USER.md` / `CRONTAB.md` / `HEARTBEAT.md` / `SLEEP.md` carry personalization.
 3. **Plugins are folders** — A skill is a folder with a `SKILL.md`. No npm install, no API registration. Claude Code auto-discovers it.
 4. **Memory follows git** — `memory/` is git-tracked. Clone the repo, get the memory. No external database.
 5. **Minimal code, maximum leverage** — Every line of code should justify why Claude Code can't do it natively. If Claude can handle it via markdown instructions, don't write code for it.
-6. **Templates are mechanism or personalization, never both** — `template/CLAUDE.md` is mechanism (no placeholders, identical per bot). All user-specific values live in the side files (`IDENTITY.md`, `SOUL.md`, `USER.md`, `CRONTAB.md`, `HEARTBEAT.md`, `SLEEP.md`). Same rule for meta-skills: keep them generic so upgrades are straight copies.
+6. **Templates are mechanism or personalization, never both** — `template/CLAUDE.md` is mechanism (no placeholders, identical per bot). All user-specific values live in the side files (`SOUL.md`, `USER.md`, `CRONTAB.md`, `HEARTBEAT.md`, `SLEEP.md`). Same rule for meta-skills: keep them generic so upgrades are straight copies.
 
 ## First-Run Setup
 
@@ -50,7 +50,7 @@ On first launch, detect unconfigured state and guide the user interactively.
 7. Ask for user's **name** and **timezone**.
 8. Generate configs:
    - Write `ecosystem.config.cjs` with supervisor token, user_id, tmux session name.
-   - Copy `template/CLAUDE.md` to the bot directory **verbatim** (no placeholder filling, no translation). Fill user-specific values into `IDENTITY.md`, `SOUL.md`, `USER.md` instead.
+   - Copy `template/CLAUDE.md` to the bot directory **verbatim** (no placeholder filling, no translation). Fill user-specific values into `SOUL.md`, `USER.md` instead.
 9. Install supervisor dependencies: `cd supervisor && npm install`.
 10. Start supervisor: `pm2 start ecosystem.config.cjs && pm2 save`.
 11. Confirm setup complete. Tell user to launch via tmux next time:
@@ -72,7 +72,7 @@ zero-claw/
 ├── template/               # Files copied into each new bot dir:
 │                           #   CLAUDE.md (system — verbatim)
 │                           #   HEARTBEAT.md, SLEEP.md, CRONTAB.md,
-│                           #   IDENTITY.md, SOUL.md, USER.md
+│                           #   SOUL.md, USER.md
 │                           #   (all customized during setup)
 ├── skills/                 # Plugin skills: setup, add-bot, upgrade,
 │                           # evolve, learn, llm-wiki, ...

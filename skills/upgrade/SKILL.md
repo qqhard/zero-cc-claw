@@ -123,7 +123,7 @@ Compare the existing file against the plugin template:
 - If they match exactly → up-to-date.
 - If they differ only in the two cron expressions → outdated but **preserve the user's cron expressions** when replacing.
 - If they differ elsewhere → **outdated or legacy-format**. Before replacing, scan the existing file for user content that must be preserved:
-  - The `Role` section's `(core responsibility — ...)` paragraph (or a filled-in version of it) → migrate to `IDENTITY.md` → *Core Responsibility*.
+  - The `Role` section's `(core responsibility — ...)` paragraph (or a filled-in version of it) → migrate to `SOUL.md` → *Core Responsibility*.
   - Any `## Cron Tasks` table rows the user customized → migrate to `CRONTAB.md`.
   - Any customized heartbeat/sleep cron expressions → carry over into the new `CLAUDE.md`'s Heartbeat and Sleep table.
 
@@ -139,7 +139,9 @@ Older bots may also carry leftover `.claude/skills/heartbeat/` and `.claude/skil
 
 Also check the bot root for `HEARTBEAT.md`, `SLEEP.md`, and `CRONTAB.md` — older bots may have only `HEARTBEAT.md` (pre-split schema) and need `SLEEP.md` added while the nightly-consolidation section is removed from `HEARTBEAT.md`. `CRONTAB.md` is new in 0.13.0 — if missing, create it from the template (migrating user cron rows from the old CLAUDE.md if any). All three files should contain task lists only; scope / invariants / journal format belong in `CLAUDE.md` → "Heartbeat and Sleep".
 
-Also check the bot's `IDENTITY.md` for a `## Core Responsibility` section — new in 0.13.0. If missing, flag for Phase 3 so the value migrated from the old CLAUDE.md's Role section can be written there.
+**Legacy `IDENTITY.md` (removed in 0.15.0)** — check if the bot has an `IDENTITY.md` file. As of 0.15.0 its contents live in `SOUL.md` (header bullets for Name/Creature/Vibe/Emoji/Avatar, plus a `## Core Responsibility` section). Flag for Phase 3: merge IDENTITY fields into SOUL.md, delete the old file.
+
+Also check the bot's `SOUL.md` for a `## Core Responsibility` section. If missing (pre-0.15.0 SOUL format), flag for Phase 3 so either the legacy `IDENTITY.md` value or the value migrated from the old CLAUDE.md's Role section can be written there.
 
 For users who only want to refresh the meta-skill layer (not the whole infra), point them at `/zero-claw:upgrade-meta-skill` instead.
 
@@ -186,9 +188,9 @@ After applying: `cd supervisor && npm install`. For pm2 restart, use the project
 Preserve any custom env vars the user added. **Rename pm2 app name** from generic `supervisor` to `<dirname>-supervisor` (where `<dirname>` is the project root directory name, e.g. `my-project-supervisor`) if it's still the generic name. Run `pm2 jlist` to verify the new name doesn't collide. Warn the user that pm2 will see this as a new process — they may need to `pm2 delete supervisor && pm2 start ecosystem.config.cjs && pm2 save`.
 
 **Bot CLAUDE.md** (if it differs from the template):
-- "Migrate and replace" — apply the migrations recorded in Phase 2 (core responsibility → `IDENTITY.md`, user cron rows → `CRONTAB.md`), copy `$CLAUDE_PLUGIN_ROOT/template/CLAUDE.md` into place, then **restore the user's heartbeat/sleep cron expressions** into the new file's Heartbeat and Sleep table if they had been customized.
+- "Migrate and replace" — apply the migrations recorded in Phase 2 (core responsibility → `SOUL.md`, user cron rows → `CRONTAB.md`), copy `$CLAUDE_PLUGIN_ROOT/template/CLAUDE.md` into place, then **restore the user's heartbeat/sleep cron expressions** into the new file's Heartbeat and Sleep table if they had been customized.
 - "Show diff" — display what will change before deciding.
-- "Skip" — not recommended; later components (CRONTAB, IDENTITY fields) assume the new CLAUDE.md.
+- "Skip" — not recommended; later components (CRONTAB, SOUL fields) assume the new CLAUDE.md.
 
 After the replacement, the file should differ from the plugin template *only* in the two cron expressions (if the user customized them). Anywhere else differing means migration extracted incorrectly.
 
@@ -214,9 +216,14 @@ After the replacement, the file should differ from the plugin template *only* in
 - "Create from template" — copy `$CLAUDE_PLUGIN_ROOT/template/CRONTAB.md`, translate body per user's language in `USER.md`, and append any user cron rows that were extracted from the old `CLAUDE.md` → `## Cron Tasks` section during Phase 2.
 - "Skip" — user cron tasks will have no home; heartbeat/sleep still work but custom schedules are lost.
 
-**IDENTITY.md Core Responsibility field** (if missing — new in 0.13.0):
-- "Add field" — append a `## Core Responsibility` section using the paragraph extracted from the old `CLAUDE.md` Role section in Phase 2. If Phase 2 found no usable text, ask the user for one sentence describing what this assistant is mainly for.
-- "Skip" — CLAUDE.md's Session Start step will complain about missing `IDENTITY.md` fields on next launch.
+**Legacy IDENTITY.md → SOUL.md merge** (if `IDENTITY.md` still exists — removed in 0.15.0):
+- "Merge into SOUL.md" — read the old `IDENTITY.md`, copy its five header bullets (Name / Creature / Vibe / Emoji / Avatar) to the top of `SOUL.md` (above `## Core Responsibility`), copy its `## Core Responsibility` section into `SOUL.md`'s `## Core Responsibility` section (overwrite the placeholder if SOUL.md still has one; otherwise prefer IDENTITY.md's value since it's the more recently-edited identity surface in pre-0.15.0 bots), then `git rm IDENTITY.md`. Preserve the user's existing `SOUL.md` personality paragraph and boundaries — only write the identity-card header and Core Responsibility.
+- "Show diff" — preview the merged SOUL.md before deciding.
+- "Skip" — not recommended; `CLAUDE.md`'s Session Start expects identity to live in SOUL.md and will complain on next launch.
+
+**SOUL.md Core Responsibility field** (if missing — only applies when there's no legacy IDENTITY.md to merge from):
+- "Add field" — append a `## Core Responsibility` section to `SOUL.md` using the paragraph extracted from the old `CLAUDE.md` Role section in Phase 2. If Phase 2 found no usable text, ask the user for one sentence describing what this assistant is mainly for.
+- "Skip" — `CLAUDE.md`'s Session Start will complain about missing SOUL.md fields on next launch.
 
 **Memory/Journal** (if missing):
 - "Create structure" — create `memory/MEMORY.md`, `journal/`, `USER.md` (non-destructive, never overwrites existing files)

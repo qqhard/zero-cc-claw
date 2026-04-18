@@ -19,7 +19,7 @@ allowed-tools:
 One-shot migration from an OpenClaw workspace to a Zero-Claw layout. Replaces `/zero-claw:setup` when the user already has agents running under OpenClaw — no re-naming, no re-shaping personas, no losing memory.
 
 **What changes vs. fresh setup:**
-- No persona-shaping questions — take everything from OpenClaw's `IDENTITY.md` / `SOUL.md` / `USER.md`.
+- No persona-shaping questions — take everything from OpenClaw's `IDENTITY.md` / `SOUL.md` / `USER.md` (zero-claw merges them into a single `SOUL.md` on the target side).
 - Bot tokens are read out of the user's `openclaw.json` — no BotFather round-trip for agents.
 - Memory / journal / skills / scripts / MCPs are migrated in place.
 - The only BotFather step is for the **supervisor** bot (OpenClaw has no supervisor concept).
@@ -92,19 +92,18 @@ Same as `/zero-claw:setup` — numbered options via AskUserQuestion wherever pos
 
    Per-agent (in `<parent>/<agent-name>/`):
 
-   a. **IDENTITY.md** — copy OpenClaw's `IDENTITY.md` verbatim. If the agent is from `config/agent-backups/<name>/` and that file has unfilled placeholders, fall back to extracting name/creature/vibe from their `SOUL.md` and prompt the user only for missing bits.
-
-   b. **SOUL.md** — copy OpenClaw's `SOUL.md` verbatim. It already carries the agent's core truths, boundaries, and vibe.
+   a+b. **SOUL.md** (merged) — zero-claw no longer has a separate `IDENTITY.md`. Read OpenClaw's `IDENTITY.md` and `SOUL.md`, then write a single `<bot-dir>/SOUL.md` in this shape:
+      - Header bullets — `Name`, `Creature`, `Vibe`, `Emoji`, `Avatar` (from OpenClaw's `IDENTITY.md`). If that file has unfilled placeholders because the agent came from `config/agent-backups/<name>/`, fall back to extracting name/creature/vibe from their `SOUL.md` and prompt the user only for missing bits.
+      - `## Core Responsibility` — one to three sentences from the OpenClaw SOUL's "你是 X" assertion or the `## 核心职责` / `## Core Responsibility` section (summarize if it's a list).
+      - `## Core Truths` — the personality/style body from OpenClaw's `SOUL.md` (`## 风格` / `## Style` / equivalent). Keep it substantive; these are the agent's actual voice, not the baseline zero-claw bullets.
+      - `## Boundaries` — OpenClaw's `## 不做的事` / `## Boundaries` section.
+      - `## Notes from the User` — any free-form remainder the user had; leave a placeholder invite if OpenClaw had nothing there.
 
    c. **HEARTBEAT.md** — if OpenClaw has one (`HEARTBEAT.md` at root or in `config/agent-backups/<name>/`), copy it. Otherwise scaffold from `$CLAUDE_PLUGIN_ROOT/template/HEARTBEAT.md`.
 
    d. **USER.md** — for the **primary agent**, copy root `USER.md`. For additional agents, **symlink** to the primary's `USER.md` (single source of truth; mirrors add-bot's "symlink" option).
 
-   e. **CLAUDE.md** — copy `$CLAUDE_PLUGIN_ROOT/template/CLAUDE.md` and fill:
-      - Assistant name / user name / timezone / language — from USER.md + IDENTITY.md.
-      - Core Responsibility — extract from SOUL.md's "核心职责" / "Core Responsibility" heading if present; otherwise summarize SOUL.md in one sentence.
-      - Do NOT touch Personality / Boundaries fields — those live in SOUL.md now.
-      - Keep the rest of the template unchanged.
+   e. **CLAUDE.md** — copy `$CLAUDE_PLUGIN_ROOT/template/CLAUDE.md` **verbatim**. It is system mechanism with no placeholders; identity / responsibility / personality all live in `SOUL.md` now. Keep this file byte-identical across all bots.
 
    f. **journal/** — rename OpenClaw's per-agent `memory/YYYY-MM-DD.md` daily logs into `journal/YYYY-MM-DD.md`. For the primary agent use the root `memory/*.md` daily files; for backed-up agents use whatever daily files exist under their backup dir (usually none — they live at the root).
 
@@ -128,7 +127,7 @@ Same as `/zero-claw:setup` — numbered options via AskUserQuestion wherever pos
 
    l. **start.sh** — copy `$CLAUDE_PLUGIN_ROOT/start.sh` → `<bot-dir>/start.sh`, `chmod +x`.
 
-   m. **Initialize git** in each bot dir. Track `CLAUDE.md`, `IDENTITY.md`, `SOUL.md`, `USER.md`, `HEARTBEAT.md`, `memory/`, `journal/`, `skills/` under `.claude/`, `scripts/`. Git-ignore `.telegram/` and `config/google-auth/` (they hold secrets).
+   m. **Initialize git** in each bot dir. Track `CLAUDE.md`, `SOUL.md`, `USER.md`, `HEARTBEAT.md`, `memory/`, `journal/`, `skills/` under `.claude/`, `scripts/`. Git-ignore `.telegram/` and `config/google-auth/` (they hold secrets).
 
    Parent dir (`<parent>/`):
 

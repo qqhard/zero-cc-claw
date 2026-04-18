@@ -1,6 +1,6 @@
 ---
 name: upgrade-meta-skill
-description: "Refresh meta-skills (evolve, ...) in every bot directory under the current project. Meta-skills are self-modification tools installed by default; this keeps them in sync with the plugin. Non-destructive — user customizations in SOUL/CLAUDE/IDENTITY are never touched. Triggers: 'upgrade meta skill', 'refresh meta-skills', 'update evolve'."
+description: "Refresh meta-skills (evolve, ...) in every bot directory under the current project. Meta-skills are self-modification tools installed by default; this keeps them in sync with the plugin. Non-destructive — user customizations in SOUL.md / CLAUDE.md / memory are never touched. Triggers: 'upgrade meta skill', 'refresh meta-skills', 'update evolve'."
 user-invocable: true
 allowed-tools:
   - Read
