@@ -189,13 +189,103 @@ export function createBotManager({ bots, config, onEvent = () => {} }) {
     return getClaudePid(bot) !== null;
   }
 
+  // Read a process's env block from /proc (Linux only). Returns an object of
+  // env key → value, or null if /proc isn't readable (other platforms, or the
+  // process already gone).
+  function readProcEnv(pid) {
+    try {
+      const raw = fs.readFileSync(`/proc/${pid}/environ`, 'utf-8');
+      const out = {};
+      for (const kv of raw.split('\0')) {
+        if (!kv) continue;
+        const i = kv.indexOf('=');
+        if (i > 0) out[kv.slice(0, i)] = kv.slice(i + 1);
+      }
+      return out;
+    } catch {
+      return null;
+    }
+  }
+
+  // Find all Telegram plugin servers belonging to this bot. Two sources:
+  //   1. `<bot-dir>/.telegram/bot.pid` — the plugin's own "current primary"
+  //      pointer (overwritten on each new-server launch, so it only knows
+  //      the latest one).
+  //   2. /proc/*/environ scan for TELEGRAM_STATE_DIR matching this bot.
+  //      Catches orphans from earlier sessions that bot.pid has forgotten.
+  // The two together are complementary — bot.pid is precise, the env scan
+  // is exhaustive (but Linux-only).
+  function findTelegramPluginPids(bot) {
+    const targetDir = path.join(bot.workDir, '.telegram');
+    const pids = new Set();
+    try {
+      const pidFile = path.join(targetDir, 'bot.pid');
+      if (fs.existsSync(pidFile)) {
+        const p = parseInt(fs.readFileSync(pidFile, 'utf-8').trim());
+        if (Number.isFinite(p)) pids.add(p);
+      }
+    } catch {
+      /* ignore */
+    }
+    try {
+      for (const entry of fs.readdirSync('/proc')) {
+        if (!/^\d+$/.test(entry)) continue;
+        const pid = parseInt(entry);
+        const env = readProcEnv(pid);
+        if (env && env.TELEGRAM_STATE_DIR === targetDir) pids.add(pid);
+      }
+    } catch {
+      /* /proc not available (macOS) — bot.pid still works */
+    }
+    return [...pids];
+  }
+
+  // Kill the Telegram plugin server(s) for this bot. The plugin detaches
+  // from claude's signal chain (bun daemon with its own pid file), so
+  // `tmux kill-session` alone does NOT reach it — it becomes an orphan
+  // (ppid=1) that keeps polling getUpdates with the bot token. Telegram
+  // only honors ONE polling connection per token, so orphans + new server
+  // rotate randomly, silently dropping user messages. Always run this
+  // before tearing down the tmux session.
+  async function killTelegramPluginServers(bot) {
+    const pids = findTelegramPluginPids(bot);
+    if (pids.length === 0) return;
+    for (const pid of pids) {
+      try {
+        process.kill(pid, 'SIGTERM');
+      } catch {
+        /* already gone */
+      }
+    }
+    await sleep(500);
+    for (const pid of pids) {
+      try {
+        process.kill(pid, 0); // probe: throws if dead
+        try {
+          process.kill(pid, 'SIGKILL');
+          console.log(
+            `[killProcess] ${bot.name}: SIGKILLed plugin server pid ${pid} (ignored SIGTERM)`
+          );
+        } catch {
+          /* raced to exit */
+        }
+      } catch {
+        /* already gone — SIGTERM worked */
+      }
+    }
+  }
+
   // Nuke the whole tmux session rather than SIGTERM individual children.
   // Why: claude-code's TUI occasionally drops out of raw mode (stdin ends up in
   // cooked+echo, keystrokes pile up as literal `^M` below the TUI, slash
   // commands stop working), and the only reliable recovery is a brand-new pty.
   // Killing the session + recreating on launch gives every restart a fresh pty
   // and clears any accumulated termios state.
+  //
+  // Before the tmux kill, reap Telegram plugin orphans — see
+  // `killTelegramPluginServers` for the why.
   async function killProcess(bot) {
+    await killTelegramPluginServers(bot);
     if (!sessionExists(bot)) return false;
     try {
       sh(`tmux kill-session -t ${bot.session}`);
