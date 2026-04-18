@@ -9,7 +9,7 @@ See `CLAUDE.md` → "Heartbeat and Sleep" for scope, invariants, and how the cro
 - Send a brief online status to Telegram (plain text, no emoji).
 - Review the last hour of conversation for notable events.
 - Write events to `journal/YYYY-MM-DD.md` using the journal format in `CLAUDE.md`. Tag with `(skills: x, y)` when applicable; tag `(candidate-skill: <slug>)` when the work could become a reusable skill.
-- Write to `memory/*.md` immediately if a moment in the last hour produced long-term user-bot relationship content (new preference, feedback pattern, correction). Don't wait for the nightly sleep pass.
+- Write to `memory/*.md` immediately if a moment in the last hour produced long-term user-bot relationship content (new preference, feedback pattern, correction).
 - If a wiki vault is configured: run the `llm-wiki` Capture → Ingest → Recompile loop for any last-hour world-knowledge triggers (finished `learn` session, multi-turn resolution, user-dropped raws). Silent when nothing qualifies.
 
 ## Proactive checks (rotate — not every heartbeat, every few)

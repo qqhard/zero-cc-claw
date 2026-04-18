@@ -1,6 +1,6 @@
 ---
 name: evolve
-description: "Daily skill-library maintenance. Upgrades (adds/edits) skills when patterns emerge, retires skills unused for 90+ days. Triggered by the nightly sleep cron (`SLEEP.md`), or manually via 'evolve' / 'self-review'. Only touches `.claude/skills/` — memory, SOUL, and USER belong to other owners."
+description: "Daily skill-library maintenance. Promotes a pattern to a new/edited self-skill when the abstraction is clean, retires skills unused for 90+ days. Triggered by the nightly sleep cron (`SLEEP.md`), or manually via 'evolve' / 'self-review'. Only touches `.claude/skills/` — memory, SOUL, and USER belong to other owners."
 user-invocable: true
 allowed-tools:
   - Read
@@ -14,6 +14,8 @@ allowed-tools:
 # Evolve
 
 Daily skill-library maintenance. The one job: keep the set of self-skills aligned with what the bot actually does, without letting it bloat.
+
+**Evolution is abstraction, not counting.** The question that gates every upgrade is "can I name a clean invariant?" — not "how many times did this happen?". A single well-abstracted pattern is worth more than five vaguely related incidents. Counting only shows up as a sanity check, never as the trigger.
 
 ## Scope
 
@@ -37,49 +39,41 @@ If `.claude/skills/.self-skills` does not exist, create it as an empty file.
 
 ## Philosophy: two phases
 
-- **Upgrade — fast, signal-triggered.** Create or edit a self-skill when a pattern recurs. "Add" and "edit" are the same force: the library grows more useful. No signal → no change.
-- **Retire — slow, usage-triggered.** Delete skills that haven't been used in 90 days. Anti-entropy pressure on the library.
+- **Upgrade — abstraction-triggered.** Create or edit a self-skill when you can name a clean invariant from recent work. "Add" and "edit" are the same force: the library grows more useful. No nameable abstraction → no change.
+- **Retire — usage-triggered.** Delete skills that haven't been used in 90 days. Anti-entropy pressure on the library.
 
-## Inputs
+Use the tools you already have — `Read`, `Grep`, `Glob`, `Bash` for `git log` — to gather whatever evidence the judgment needs. There is no pre-digested data layer; you decide what to look at.
 
-Read these before deciding anything:
+## Phase A — Upgrade (abstraction check)
 
-1. Today's journal: `journal/$(date +%Y-%m-%d).md`
-2. Last 7 days of journals (for upgrade signals): `journal/*.md`
-3. Last 90 days of journals (for retire signals): same glob, wider window.
-4. Reverted evolve commits: `git log --grep='^Revert.*evolve(' --since=30.days.ago` — for each, read the reverted diff and note the file + section to avoid.
-5. Current self-skills: `cat .claude/skills/.self-skills`.
+**Candidate sources** — any of these is enough to *consider* a candidate; none of them alone decides:
 
-## Phase A — Upgrade (conditional, no budget)
+- `(candidate-skill: <slug>)` annotations in recent journals — in-the-moment recognitions by the main agent. Read the surrounding entries to see what the flow looked like.
+- Patterns you notice while skimming the last 7 days of journals — recurring requests, recurring corrections, recurring shapes.
+- The user correcting the same behavior multiple times — corrections are abstractions waiting to be named.
 
-**When to act** (any of the following is enough):
+**Abstraction check** — both must hold before you write anything:
 
-- Today's or recent journals contain `(candidate-skill: <slug>)` annotations — these are in-the-moment recognitions by the main Agent that a task could become a reusable skill. Read the surrounding entries to see what the flow looked like.
-- A request pattern appears in journals ≥3 times in the last 7 days with no matching skill (or the existing one doesn't actually cover the real case).
-- The user corrects the same behavior ≥2 times in recent journals.
+1. **Name the invariant in one sentence.** You can state the pattern as "when X, do Y" or "input-shape → output-shape". If the best you can write is "the user sometimes wants something like…", the abstraction isn't there yet — skip.
+2. **Sanity check: ≥1 concrete occurrence in the last 7 days.** Not a threshold — a guard against inventing patterns from nothing. `(candidate-skill:)` tags already satisfy this.
+
+A `(candidate-skill:)` tag short-circuits step 1 — the main agent already did the naming. Still confirm the invariant matches what the journal entries actually show before acting on it.
 
 **What to write**:
 
-- **New self-skill**: name it for the pattern; draft a SKILL.md that is *minimal and specific* — solving exactly the cases you saw, not the cases you imagine. Include a concrete `description` with trigger phrases. Append the name to `.claude/skills/.self-skills`.
+- **New self-skill**: name it for the invariant; draft a SKILL.md that is *minimal and specific* — covering exactly the cases you saw, not the ones you imagine. Include a concrete `description` with trigger phrases. Append the name to `.claude/skills/.self-skills`.
 - **Edit an existing self-skill**: tighten it to actually cover the case that keeps slipping through, or replace an outdated section. Prefer editing over creating when a related skill exists.
 
-The bot benefits from small, focused skills. When in doubt about whether to split or merge, prefer the version closer to the concrete case.
+Prefer small, focused skills. When in doubt about whether to split or merge, pick the version closer to the concrete case. If the abstraction check is shaky, skip — there's always tomorrow.
 
-**What not to do**:
+## Phase B — Retire (usage-driven)
 
-- Don't invent patterns that only happened once.
-- Don't pre-generalize for hypothetical cases.
-- Don't touch anything outside the Scope section.
+For each skill listed in `.claude/skills/.self-skills`:
 
-If in doubt, skip this phase — there's always tomorrow.
-
-## Phase B — Retire (always)
-
-Scan `.self-skills`. For each registered skill, count its appearances in journal `(skills: ...)` tags over the last 90 days.
-
-- **0 appearances in 90 days** → delete the folder, drop the name from `.self-skills`.
-- **Non-zero but low** → leave alone. 90-day zero-use is the hard line; low-use skills still earn their place.
-- **Grace period**: skills added in the last 90 days are exempt (check creation date via `git log --diff-filter=A --follow <skill path>`).
+1. Count `(skills: <name>)` tag occurrences in the last 90 days of journals.
+2. Check creation date: `git log --diff-filter=A --follow <skill path>`. Skills younger than 90 days are in the grace period — leave alone.
+3. If count is 0 **and** the skill is past its grace period → delete the folder, drop the name from `.self-skills`.
+4. Non-zero usage → leave alone. 90-day zero-use is the hard line; low-use skills still earn their place.
 
 The goal is anti-entropy, not aggressive pruning. A skill unused for 90 days is either wrong, obsolete, or replaced — in none of those cases is keeping it helpful.
 
@@ -109,6 +103,5 @@ If both phases produced zero changes → **do not commit**. Silent no-op is the 
 ## Safety invariants
 
 - Never run `git push`. The user's local git is the audit trail.
-- Never touch forbidden paths (see Scope).
-- Never retire a skill added less than 90 days ago.
+- Stay within the paths listed in Scope above.
 - If uncertain whether a proposed change is safe, skip it — there's always tomorrow.

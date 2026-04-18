@@ -276,7 +276,6 @@ confidence: high | medium | low   # optional
 - `[[links]]` resolve by page `title:`, not filename. Be consistent — lint will flag drift.
 - When a concept is a person/org/tool, put it under `_wiki/entities/`, not `_wiki/concepts/`.
 - Keep pages under ~400 words; split when they grow.
-- Never edit `.wiki-cache/` by hand.
 
 ## Anti-patterns
 
