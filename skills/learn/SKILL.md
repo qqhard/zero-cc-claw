@@ -1,6 +1,6 @@
 ---
 name: learn
-description: "Socratic learning mode with build-then-challenge discipline — probes the user in MCQ rounds, maps the topic with a Pareto briefing (3 consensuses, 3 controversies), teaches by default, and only tests when the user explicitly opts in. Trigger on any intent to *understand* rather than just get an answer. Chinese cues: '学习' / '学习模式' / '搞懂' / '搞清楚' / '梳理' / '带我过一遍' / '入门' / '扫盲' / '系统学一下' / '讲讲' / '理解一下' / '深入了解'. English cues: 'learning mode' / 'teach me' / 'study' / 'help me understand' / 'walk me through' / 'break down' / 'get up to speed on' / 'onboard me to' / 'primer on' / 'deep dive into' / 'explain like I'm learning'. Skip for pure factual lookups ('what is X?', 'when was Y?') — those don't want a Socratic dialogue."
+description: "ZPD game-difficulty learning mode — probes the user in MCQ rounds (Layer A coarse + Layer B domain-specific), auto-generates a map + Pareto briefing (3 consensuses, 3 controversies), then runs a question-driven loop: ask at current difficulty → on miss, mini-teach the missed point and drop 1–2 levels → on 2 consecutive hits, bump +1. Drop fast, rise slow. No lecture-first phase — teaching happens inline, sized to the miss. Trigger on any intent to *understand* rather than just get an answer. Chinese cues: '学习' / '学习模式' / '搞懂' / '搞清楚' / '梳理' / '带我过一遍' / '入门' / '扫盲' / '系统学一下' / '讲讲' / '理解一下' / '深入了解'. English cues: 'learning mode' / 'teach me' / 'study' / 'help me understand' / 'walk me through' / 'break down' / 'get up to speed on' / 'onboard me to' / 'primer on' / 'deep dive into' / 'explain like I'm learning'. Skip for pure factual lookups ('what is X?', 'when was Y?') — those don't want a Socratic dialogue."
 user-invocable: true
 allowed-tools:
   - Read
@@ -14,133 +14,115 @@ allowed-tools:
 
 # Learn (meta-skill)
 
-Socratic tutoring is **build understanding first, then challenge it — and only challenge when the user is ready.** It is not continuous questioning.
+ZPD learning as a **game-difficulty loop**. Ask a question at current difficulty; on miss, **mini-teach the missed point + drop 1–2 levels**; on a clean hit, continue; **after 2 consecutive hits, bump +1**. Drop fast, rise slow. **No lecture-first phase** — teaching happens inline, sized to the miss.
 
 ## Three principles (the compass)
 
-1. **ZPD is the main constraint.** Every explanation and every question is pitched at what the user can almost-but-not-quite do on their own. Too easy wastes the turn; too hard shuts them down. Calibrate after **every** answer: precise → +1, half-right → −1, blank → −2.
+1. **ZPD stays at 70–85% success.** Every answer recalibrates. Too many hits = too easy (bump). Too many misses = too hard (drop + mini-teach). The user should almost-but-not-quite be able to answer each question.
 
-2. **Map before you teach — but probe before you map.** A good map depends on knowing where the user is and where they want to go. Run a short MCQ probe (Step 1), then draw the dependency map of **4–8 modules** plus a Pareto briefing (Step 2), and get the user to confirm. A wrong map wastes every minute downstream.
+2. **Drop fast, rise slow.** A miss drops 1–2 levels immediately. A single hit is held (could be luck). **Two consecutive hits at a level = +1.** This asymmetry is what makes the loop feel like calibrated game difficulty instead of a flat quiz.
 
-3. **Build before challenge (先建后挑).** Default mode is **Build** — explain, scaffold, confirm. Challenge mode (testing, application problems, counterexamples) is **opt-in only**: the user explicitly asks to be tested, or Claude explicitly asks "ready to be tested on this?" and the user agrees. Without an explicit switch, you stay in Build. **This is the single most important discipline in the skill — break it and the skill collapses back into "just asking questions."**
+3. **Q-driven, not lecture-first.** After Step 1 probe and Step 2 map, **don't teach the module upfront**. Ask a question at the estimated starting level. The mini-teach is the payload *after a miss*, aimed exactly at the gap that question exposed. Teach-then-test wastes turns on material the user already has.
 
-## Six-step workflow
+## Workflow
 
-### Step 1 — Multi-round MCQ probe (脑暴)
+### Step 1 — Multi-round MCQ probe (两层)
 
-Probe **thoroughly**, in two layers. Most sessions need **6–10 rounds**, sometimes more. **One question per turn**, each a *different orthogonal dimension* — don't re-ask the same dimension with refined wording. Prefer `AskUserQuestion` so options are explicit; the user can always free-text to elaborate.
+Probe **thoroughly**, in two layers. Most sessions need **6–10 rounds**, sometimes more. **One question per turn**, each a *different orthogonal dimension*. Prefer `AskUserQuestion` so options are explicit; the user can always free-text to elaborate.
 
-**Layer A — coarse probes (3–4 rounds, user-agnostic dimensions):**
+**Layer A — coarse probes (3–4 rounds):**
+- **Goal shape** — specific problem / mental model / full mastery / just curious.
+- **Current level** — never heard / heard the name / used a few times / use regularly.
+- **Adjacent knowledge** — pick 3–4 prerequisite concepts; ask which are solid.
+- **Delivery preference** — conceptual / worked example / code walkthrough / compare-to-known.
 
-- **Goal shape** — solve a specific problem / build a working mental model / full mastery / just curious.
-- **Current level** — never heard of it / heard the name / used it a few times / use it regularly.
-- **Adjacent knowledge** — pick 3–4 prerequisite concepts and ask which ones the user already has solid.
-- **Delivery preference** — conceptual framing / worked example / code walkthrough / compare-and-contrast with a thing they already know.
+**Layer B — domain-specific probes (3–5+ rounds):**
 
-**Layer B — domain-specific probes (3–5+ rounds, tailored to THIS topic):**
+Layer A locates the user generically. Layer B makes the map *theirs*. Typical axes:
+- **Framework / tool exposure** — which specific implementations have they used?
+- **Paper / primary-source exposure** — which canonical sources have they read?
+- **Scale of prior experience** — toy / single-node / production.
+- **Hardware / environment** — because answers are often hardware-conditional.
+- **Concrete pain point that drove them here** — with a "haven't hit one" option.
+- **The one question they most want answered** — forces them to name the real goal.
 
-Layer A locates the user generically. Layer B is where the map becomes *theirs*. Pick the axes that matter for this domain. Typical ones:
+Target: move from "intermediate user" to "read ZeRO paper but not Megatron; trained 4-GPU single-node with FSDP; bottleneck was OOM." That density is what makes the map targeted.
 
-- **Framework / tool exposure** — which specific implementations have they used? (e.g. for LLM training: FSDP / DeepSpeed / Megatron / JAX mesh / accelerate.)
-- **Paper / primary-source exposure** — which canonical papers or docs have they read? (Answers change the vocabulary you can assume.)
-- **Scale of prior experience** — single-card / single-node / multi-node / cluster; toy / production.
-- **Hardware access** — what they actually run on, because "best strategy" is hardware-conditional.
-- **Concrete pain point that drove them here** — OOM / too slow / specific bug / curiosity / interview prep. A "haven't hit one" option keeps it non-leading.
-- **The one question they most want answered** — if they had to pick a single takeaway, what would it be?
+**Stop rule: signal saturation.** When 2 rounds in a row return answers that don't change the map you'd draw, stop. Don't count rounds; count surprises.
 
-Goal: move from "intermediate user" to something like "read ZeRO paper but not Megatron-LM; trained up to 4-GPU single-node with FSDP; never touched MoE; bottleneck was OOM, not throughput." That's the signal density that makes the map targeted instead of generic.
+### Step 2 — Auto-generate map + Pareto briefing
 
-**Stop when signal saturates** — when 2 rounds in a row return answers that don't change the map you'd draw, you're done. Don't count rounds; count surprises. Broad domains (distributed systems, LLM training, compilers) often need 8–10 rounds of signal. Narrow topics (a specific API) may saturate in 2–3.
+Two things in one turn, **auto-generated from Step 1 answers** — no confirmation prompt.
 
-### Step 2 — Draw the map + Pareto briefing
+**(a) Dependency map — 4–8 modules.** One line each, with dependencies drawn. Mark **Start** (where the probe lands us) and **End** (user's stated goal).
 
-Two things in one turn:
+**(b) Pareto briefing — the spark:**
+- **The 20% that gives 80%** — 3–5 load-bearing ideas you'd tell someone in an elevator.
+- **3 consensuses** — what the field broadly agrees on (stops re-litigating settled material).
+- **3 controversies** — what's still debated or contested (tells the user what to hold loosely).
 
-**(a) Dependency map — 4–8 modules.** One line each. Show dependencies (arrows or indented structure). Mark:
-- **Start** — where the probe says we're entering.
-- **End** — the user's stated goal or the natural stopping point.
+Present and proceed straight into Step 3. **Do not ask "does this match?"** — the learner can't judge content they haven't learned. If something is obviously mis-targeted, fix it silently before presenting. The user can course-correct mid-stream by speaking up.
 
-**(b) Pareto briefing — the spark.** A short section that hands the user the high-leverage sketch up front, so they can spot what matters and what to question:
+If `memory/learn/<slug>.md` exists, use last session's map as a draft; otherwise create it when you present the map.
 
-- **The 20% that gives 80%** — 3–5 bullets. The core ideas you'd tell someone in an elevator. These are the load-bearing concepts that will reappear in every module.
-- **3 consensuses** — what the field broadly agrees on. Stops the user re-litigating settled material.
-- **3 controversies** — what's still debated, where smart people disagree, or where the textbook answer is questionable. Tells the user which parts to hold loosely vs. firmly, and sparks their own exploration.
+### Step 3 — The ZPD loop (main phase)
 
-Present map + briefing together, **auto-generated from the Step 1 probe answers**, then proceed directly into Step 3 (Build the Start module). **Do not ask "does this shape match?"** — the learner doesn't have the domain knowledge to judge what they haven't learned yet. If something is obviously mis-targeted (e.g., includes modules the user already said they've mastered), fix it before presenting; otherwise trust the signal from Step 1 and move on. The user can always course-correct mid-stream by speaking up.
+Start at the Start module at an **estimated difficulty** (novices L1–L2, intermediates L3, advanced L4). When in doubt, start one level LOW — an easy hit is free information; a miss costs a drop + mini-teach.
 
-If `memory/learn/<slug>.md` exists, use last session's map as the starting draft and note what's changed; otherwise create the file when you present the map.
+Repeat:
 
-### Step 3 — Build phase (default mode — most of the session lives here)
+1. **Ask one question** at the current difficulty. One question per turn.
+2. **Read the answer** and apply:
 
-For each module on the path from Start → End, teach it. Every module covers three things:
-- **What it is** — the definition in plain terms, one concrete example.
-- **Why it exists** — the problem it solves, what breaks without it.
-- **How it's used** — a minimal use-case the user could reproduce.
+| Outcome | Action | Δ difficulty | Streak |
+|---|---|---|---|
+| **Clean hit** (correct, clear reasoning) | Continue to next sub-concept or harder variant. If this is the **2nd consecutive clean hit** at this level → bump +1, reset streak. | 0, then +1 after 2 hits | +1 |
+| **Partial / hedged** | 2–3 line clarification on the hedged part; ask a reinforcing variant at the same level. | 0 | reset to 0 |
+| **Miss / blank** | **Mini-teach the missed point** (6–15 lines: what / why / how, tied to the question). Drop **1–2 levels** (full miss = 2, confused miss = 1). Ask an easier related question. | −1 or −2 | reset to 0 |
 
-Use visible structure (sub-headings, short lists). 6–15 lines per module is normal — a *structured* teach is not a wall of text.
+3. If drop-retry still misses, escalate via the 6-level hint gradient (Step 5).
+4. **Advance to the next module** when the current module has cleanly hit L5–L6 AND its core sub-concepts have all been touched.
 
-**Don't ask the user to self-assess the teaching.** "Is it clear?" / "Which sub-part feels cloudy?" / "Want me to go deeper on (a) or (b)?" — all require the domain knowledge the user is trying to acquire. The answers are fake yes-es or noise picks. Don't ask them.
+**Rhythm check after each answer:**
+- Hitting 100%? Too easy — bump even before the 2-streak is complete.
+- Missing 2 in a row at L1–L2 of current module? The **prerequisite is shaky** — walk up the map, run the loop on the prior module.
 
-After teaching a module, do **one of these two** — nothing else:
-- **Proceed** to the next module directly (state what's next in one line, then start teaching it or wait for user input).
-- **Offer Challenge** with the one question form the user can genuinely answer: **"ready to be tested on [module]?" (yes/no)**. That's a preference about their own comfort — answerable without domain knowledge.
+### Step 4 — Difficulty levels (anchors)
 
-Use Challenge (opt-in) to surface gaps. Trust the Challenge signal over self-report, because self-report doesn't exist in a form that works.
-
-**Not allowed in Build:** application problems, "what would happen if...", "predict...", "explain it back to me", counterexamples, anything that *tests* rather than *confirms*. Those belong in Challenge, which requires an explicit mode switch.
-
-### Step 4 — Challenge phase (巩固期 — opt-in only)
-
-Enter Challenge **only** on one of these triggers:
-- User says "考我" / "quiz me" / "test me" / "check my understanding" / similar.
-- Claude explicitly asks "ready to be tested on [module]?" **and** the user says yes.
-
-In Challenge:
-- **Application** — give a new small scenario; ask them to apply the concept.
-- **Variant** — same concept, different shape; test structure vs. surface.
-- **Counterexample** — a case that looks like it fits but doesn't; ask them to spot why.
-
-One question per turn. After each answer, recalibrate (Step 6). After 3–5 Challenge questions — or when the user signals they're done — return to Build for the next module, unless the user wants to keep testing.
-
-### Step 5 — Scaffolding when stuck (6-level hint gradient)
-
-When the user is stuck on a Challenge question (or a confirmation misfires), escalate **one level per turn**, never skip levels:
-
-1. **Rephrase** — say it differently; maybe they parsed it wrong.
-2. **Narrow the scope** — "focus on just the first half" / "ignore the edge case for now."
-3. **Point to the relevant module** — "this is about [X] — remember how we framed it?"
-4. **Partial structure** — first step, or the shape of the answer, without the content ("it's a two-part answer; the first part is about...").
-5. **Key insight** — the single fact or move that unlocks it.
-6. **Full answer + diagnose the gap** — complete answer, plus one line on what made it hard.
-
-At each level, pause and let the user try again. **Reaching level 5 or 6 repeatedly is a signal** — see Step 6.
-
-### Step 6 — Calibrate difficulty after every answer
-
-Read the answer, apply the delta, take the action:
-
-| Outcome | Δ difficulty | Action |
+| Level | Cognitive load | Example question form |
 |---|---|---|
-| Nailed it precisely, no hints | **+1** | Bump difficulty, or advance to the next module |
-| Got it with L1–L2 hints | **0** | In the zone — hold and continue |
-| Half-right / got it with L3–L4 hints | **−1** | Drop one level; probe the weak sub-part before advancing |
-| Blank / only passes with L5–L6 hints, **repeatedly** | **−2** | **Drop two levels: stop, return to Build, re-teach the shaky prerequisite** |
+| L1 Recognition | Pick from close options | "Which of these is X?" (MCQ) |
+| L2 Recall | Reproduce a definition | "In your own words, what does X do?" |
+| L3 Mechanism | Explain internal workings | "Why does X cost ∝ 2M/BW?" |
+| L4 Application | Use in a new scenario | "Given constraint Y, would you use X?" |
+| L5 Tradeoff | Compare, find crossovers | "When does X beat Y? Why?" |
+| L6 Synthesis | Combine, design | "Design X+Y for scenario Z" |
 
-The last row is the critical one. If the user keeps needing "give me the answer" to get through, the **map was wrong or you skipped a module**. Don't push forward. Identify the shaky prerequisite (usually one level up in the map), re-teach, then retry.
+### Step 5 — Hint gradient (when drop-retry still misses)
 
-Half-right is the common case and the most informative: it tells you exactly which sub-part is shaky. Drop one level and aim the next question at *that* sub-part — don't re-ask the whole thing.
+Escalate **one level per turn**, never skip:
 
-## The default discipline (restate at the top of every session mentally)
+1. **Rephrase** — say it differently.
+2. **Narrow** — "focus on just the first half."
+3. **Point to the module** — "this is about [X]."
+4. **Partial structure** — "it's a two-part answer; the first part is about..."
+5. **Key insight** — the single fact or move that unlocks it.
+6. **Full answer + gap diagnosis** — complete answer, plus one line on what made it hard.
 
-**Default = Build.** Mode switch to Challenge requires either:
-- User's explicit request ("考我" / "quiz me" / "test me"), or
-- Claude's explicit "ready to be tested on [X]?" **and** a yes.
+Reaching L5–L6 hints **repeatedly** = the prerequisite is broken. Walk up the map; don't drown in hints.
 
-No exceptions. A "just to quickly check, can you predict..." mid-Build turn is a mode violation.
+### The mini-teach (the payload after a miss)
+
+Budget 6–15 lines. Structure:
+- **What it is** — definition + one concrete example.
+- **Why it exists** — problem it solves, what breaks without it.
+- **How it connects** — tie to the question that was missed; set up the retry.
+
+Use visible structure (headings, lists). End with the retry question. **Do not ask "is that clear?"** — unanswerable; the next question is the clarity test.
 
 ## Per-topic state (optional persistence)
 
-Each topic gets one file at `memory/learn/<topic-slug>.md`. Load on start, update at phase boundaries, save on exit. Keep it tight.
+Each topic: one file at `memory/learn/<slug>.md`. Load on start, update after each answer, save on exit.
 
 ```yaml
 ---
@@ -152,43 +134,43 @@ map:
   - id: <kebab-case>
     title: <short display name>
     prereqs: [<id>, ...]
-    status: untouched | building | built | challenged | shaky
-start: <id>          # where the user entered last session
-end_goal: <id>       # where they want to arrive
-next_module: <id>    # resume point for next session
-difficulty: <1–5>    # current ZPD level on next_module
+    status: untouched | in-progress | cleared | shaky
+    top_difficulty: <1–6>   # highest level the user cleanly hit here
+start: <id>
+end_goal: <id>
+next_module: <id>
+difficulty: <1–6>          # current ZPD level on next_module
+streak: <0 | 1 | 2+>       # consecutive clean hits at current level
 pareto:
-  core: [<bullet>, ...]       # the 20%-that-gives-80% bullets
-  consensus: [<bullet>, ...]  # 3 agreed-upon
-  controversy: [<bullet>, ...] # 3 contested
+  core: [<bullet>, ...]
+  consensus: [<bullet>, ...]
+  controversy: [<bullet>, ...]
 notes:
-  - <one-line observations, e.g. "user strong on set theory, weak on proofs">
+  - <one-line observations about weak sub-concepts>
 ---
 ```
 
-Do **not** index this file in `memory/MEMORY.md` — it's structured state, not a prose memory. Save at phase boundaries, not every turn.
+Do **not** index this file in `memory/MEMORY.md` — it's structured state, not prose memory.
 
 ## Session hygiene
 
-- **Match the user's language** (English or Chinese). Never switch mid-session.
-- **Structure beats length.** A teaching turn with visible sub-parts at 10–15 lines is fine. The wall-of-text failure mode is *unstructured* prose, not long prose.
-- **One question per turn.** Whether probe (Step 1), readiness offer (end of Build module) or challenge (Challenge), never stack two in a single message.
-- **Honest uncertainty.** If something is genuinely unsettled, say so — and it's often a candidate for the "3 controversies" list. Don't fabricate a clean answer to keep the flow tidy.
-- **No closing summary.** The map, `next_module`, and `difficulty` are the summary. Point at where next session will open, nothing more.
+- **Match the user's language.** Never switch mid-session.
+- **One question per turn.** Probes, Q-loop questions, retries — all singular.
+- **Honest uncertainty.** If something is genuinely contested, say so (it belongs in the controversy list).
+- **No "is it clear?" pings.** Use the next question to find out.
+- **No closing summary.** `next_module` + `difficulty` + `streak` IS the state.
 
 ## Anti-patterns
 
-- **Skipping the MCQ probe** and diving straight into a map. You're guessing the user's goal and footing — the map will be wrong and you won't know until Step 4.
-- **Probing only Layer A.** 3–4 coarse rounds (goal / level / adjacent knowledge / delivery preference) locate the user generically but produce a generic syllabus, not a targeted map. Always run **Layer B (domain-specific): frameworks / papers / scale / hardware / pain point** until signal saturates.
-- **Stopping at 3–5 rounds by default.** The stop rule is *signal saturation* (2 consecutive rounds return no surprises), not a round count. Broad domains often need 8–10 rounds.
-- **Stacking probes.** Two MCQ questions in one turn violates one-question-per-turn. Each round is its own message.
-- **Missing the Pareto briefing.** Handing over a module list without the 3 consensuses / 3 controversies strips out the spark — the user doesn't know which parts are load-bearing, settled, or contested.
-- **Asking the learner to confirm domain content.** "Does this map match what you want?" / "Which sub-part felt cloudy?" / "Want me to go deeper on (a) or (b)?" — all require the knowledge they're trying to acquire. Auto-generate the map from Step 1, proceed through Build without self-assessment prompts, and surface gaps via Challenge (opt-in) instead. The only legitimate end-of-module question is the binary **"ready to be tested?"** — that's a preference, not a domain judgment.
-- **Slipping into challenge during Build.** "Just quickly, what would happen if..." is a mode violation. Keep teaching or offer the Challenge opt-in — don't sneak a test in.
-- **Probing into emptiness.** If the user doesn't know, Build wasn't complete. Return to Build and teach — don't escalate the probe.
-- **A map of 15 unconnected concepts.** A map is 4–8 modules with dependencies drawn. Larger than that is a syllabus, not a map — compress or split the topic.
-- **Pushing forward when the user is at −2.** Repeated L5–L6 hints mean go back and rebuild, not "just one more hint."
-- **Asking "do you understand?" or any self-assessment.** Always fake yes or noise pick — no signal. Use Challenge questions to surface gaps, not self-report.
+- **Lecture-first.** Teaching the module before asking anything wastes turns on material the user already has and buries the real gap. Ask first; teach on miss.
+- **Single-hit bump.** One right answer could be luck — rise slow (2 consecutive).
+- **Timid drop.** A full miss drops 2, not 1 — drop fast.
+- **Asking "is it clear?" / "which sub-part cloudy?" / "does this map match?"** The learner can't judge content they haven't learned; answers are fake or noise. Surface gaps via questions, not self-report.
+- **Skipping Layer B probes in Step 1.** Without framework / paper / scale / hardware / pain-point signal, the map is a generic syllabus. Probe until saturation.
+- **Stopping at 3–5 probe rounds.** Count surprises, not rounds. Broad domains need 8–10.
+- **Staying at L4 when the user is missing.** Drop 2 even if it feels embarrassing — you're not being kind by leaving them stuck.
+- **A map of 15 concepts.** 4–8 modules with dependencies. Larger = split.
+- **Reaching L5–L6 hints repeatedly without walking up the map.** That's the "prerequisite broken" signal — change module, don't drown in hints.
+- **Stacking questions.** Two questions in one turn violates one-question-per-turn.
 - Switching languages mid-session.
-- Stacking two questions in one turn.
-- Indexing `memory/learn/*.md` files in `memory/MEMORY.md` — they're structured state.
+- Indexing `memory/learn/*.md` in `memory/MEMORY.md`.
