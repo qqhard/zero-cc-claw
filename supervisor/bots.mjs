@@ -11,7 +11,6 @@
 import { execSync, execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
-import os from 'node:os';
 
 // --- Shared tiny helpers (inlined; not worth their own module) ---
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -51,13 +50,6 @@ function parseTokenCount(val, suffix) {
   return Math.round(n);
 }
 
-// Claude Code's convention: working dir with every non-alphanumeric char
-// replaced by '-'. /workspace/foo/bar → -workspace-foo-bar
-function projectsDirFor(workDir) {
-  const slug = workDir.replace(/[^a-zA-Z0-9]/g, '-');
-  return path.join(os.homedir(), '.claude', 'projects', slug);
-}
-
 function isClaudeCmd(cmd) {
   return /(?:^|\/)claude(?:$|\s|\0)/.test(cmd);
 }
@@ -83,7 +75,6 @@ export function createBotManager({ bots, config, onEvent = () => {} }) {
     DAILY_RESTART_AT,
     RESTART_AFTER_SLEEP_MIN_HOURS,
     SLEEP_DONE_MAX_AGE_HOURS,
-    SLEEP_TRIGGER_PATTERN,
     MAX_UPTIME_HOURS,
   } = config;
 
@@ -99,11 +90,11 @@ export function createBotManager({ bots, config, onEvent = () => {} }) {
   // through the bot manager (schedulers only issue startProcess, never
   // mark-stop, so the flag is sticky across scheduled ticks).
   const stoppedByUser = new Set();
-  // Fire-once-per-day state for both schedules. Uses the local date as the
-  // dedupe key so a supervisor restart mid-day doesn't re-fire events that
-  // already happened — except when there's no transcript evidence, in which
-  // case the restart's own sleep-confirmation check handles it.
-  const lastSleepFiredDate = new Map(); // botName → "YYYY-MM-DD"
+  // Fire-once-per-day dedupe for the daily-restart branch. Sleep dedupe is
+  // disk-backed (see sleepLogPath / readSleepLog) so it survives supervisor
+  // restarts; daily-restart only needs in-memory state because the freshness
+  // check against claude's own uptime re-derives "already restarted today"
+  // after a supervisor bounce.
   const lastRestartFiredDate = new Map();
 
   const DEFAULT_MONITOR_SECONDS = MONITOR_INTERVAL > 0 ? MONITOR_INTERVAL : 30;
@@ -537,62 +528,62 @@ export function createBotManager({ bots, config, onEvent = () => {} }) {
   }
 
   // --- Sleep + daily-restart scheduler (sleep-aware) ---
-  // Scans Claude Code's own session transcripts at `~/.claude/projects/<slug>/`
-  // for a recent user message containing SLEEP_TRIGGER_PATTERN. If found, the
-  // bot's sleep cron fired and reached claude, so a fresh restart is safe.
-  // If not found, we skip the restart and alert the user — likely the bot was
-  // down during sleep window and forcing a restart would wipe context the bot
-  // never had a chance to consolidate.
-  function sleepTriggeredRecently(bot) {
-    const dir = projectsDirFor(bot.workDir);
-    const cutoffMs = Date.now() - SLEEP_DONE_MAX_AGE_HOURS * 3600_000;
-    let entries;
+  // Disk-backed sleep log. The supervisor is the only writer: every successful
+  // fireSleep() writes `<workDir>/.zero-claw/sleep-log.json` with the ISO
+  // timestamp of the send. readSleepLog then answers "did sleep fire within
+  // SLEEP_DONE_MAX_AGE_HOURS?" directly from that file, independent of whether
+  // claude actually processed the message or what its transcripts look like.
+  //
+  // Why not scan claude's transcripts (prior behavior): transcript mtime is
+  // tied to session activity, not to the sleep event itself, and an 8–12h
+  // catch-up window could miss the 01:00 entry by mid-afternoon, causing the
+  // scheduler to re-fire sleep as catch-up. The disk log is authoritative and
+  // cheap, and the supervisor already owns this directory for the MCP
+  // disconnect marker.
+  function sleepLogPath(bot) {
+    return path.join(bot.workDir, '.zero-claw', 'sleep-log.json');
+  }
+
+  function readSleepLog(bot) {
+    const f = sleepLogPath(bot);
+    let raw;
     try {
-      entries = fs
-        .readdirSync(dir)
-        .filter((f) => f.endsWith('.jsonl'))
-        .map((f) => {
-          try {
-            return {
-              file: path.join(dir, f),
-              mtime: fs.statSync(path.join(dir, f)).mtimeMs,
-            };
-          } catch {
-            return null;
-          }
-        })
-        .filter((e) => e && e.mtime >= cutoffMs)
-        .sort((a, b) => b.mtime - a.mtime);
+      raw = fs.readFileSync(f, 'utf-8');
     } catch {
-      return { ok: false, reason: `transcripts dir missing (${dir})` };
+      return { ok: false, reason: 'no sleep log yet' };
     }
-    for (const { file } of entries) {
-      let content;
-      try {
-        content = fs.readFileSync(file, 'utf-8');
-      } catch {
-        continue;
-      }
-      for (const line of content.split('\n')) {
-        // Match genuine user prompts only, not tool_result-wrapped user lines:
-        //   real cron prompt:  "content":"读取 ... SLEEP.md ..."
-        //   tool_result wrap:  "content":[{"tool_use_id":...}]
-        // The tool_result shape happens to also contain the cron's prompt text
-        // when a subagent registered the cron, which would cause false hits.
-        const userContentMatch = line.match(
-          /"role":"user","content":"([^"]*)"/
-        );
-        if (!userContentMatch) continue;
-        if (!userContentMatch[1].includes(SLEEP_TRIGGER_PATTERN)) continue;
-        const m = line.match(/"timestamp":"([^"]+)"/);
-        if (!m) continue;
-        const ts = new Date(m[1]).getTime();
-        if (Number.isFinite(ts) && ts >= cutoffMs) {
-          return { ok: true, at: new Date(ts) };
-        }
-      }
+    let obj;
+    try {
+      obj = JSON.parse(raw);
+    } catch {
+      return { ok: false, reason: `sleep log malformed (${f})` };
     }
-    return { ok: false, reason: 'no recent SLEEP.md trigger in transcripts' };
+    const ts = new Date(obj.lastFiredAt).getTime();
+    if (!Number.isFinite(ts)) {
+      return { ok: false, reason: 'sleep log timestamp unreadable' };
+    }
+    const cutoffMs = Date.now() - SLEEP_DONE_MAX_AGE_HOURS * 3600_000;
+    if (ts < cutoffMs) {
+      return {
+        ok: false,
+        reason: `last sleep ${new Date(ts).toISOString()} older than ${SLEEP_DONE_MAX_AGE_HOURS}h window`,
+      };
+    }
+    return { ok: true, at: new Date(ts) };
+  }
+
+  function writeSleepLog(bot, at) {
+    const f = sleepLogPath(bot);
+    try {
+      fs.mkdirSync(path.dirname(f), { recursive: true });
+      fs.writeFileSync(
+        f,
+        JSON.stringify({ lastFiredAt: at.toISOString() }) + '\n',
+        'utf-8'
+      );
+    } catch (err) {
+      console.error(`[sleep-log] ${bot.name}: write failed: ${err.message}`);
+    }
   }
 
   function claudeUptimeSeconds(bot) {
@@ -620,6 +611,9 @@ export function createBotManager({ bots, config, onEvent = () => {} }) {
       execFileSync('tmux', ['send-keys', '-t', bot.target, 'Enter'], {
         timeout: 10_000,
       });
+      // Write log AFTER send-keys succeed. A failed send falls through to the
+      // catch below without touching the log, so next tick retries once.
+      writeSleepLog(bot, new Date());
       console.log(`[sleep] ${bot.name}: fired`);
       onEvent(`${bot.name} sleep triggered`);
       return true;
@@ -810,39 +804,30 @@ export function createBotManager({ bots, config, onEvent = () => {} }) {
       if (stoppedByUser.has(bot.name)) continue;
 
       // --- Sleep trigger (catch-up: fire any time past SLEEP_AT today) ---
-      // Track whether we fired sleep in THIS tick so the restart block below
-      // can distinguish "transcript has no sleep entry because bot never
-      // slept today" (legitimate skip) from "transcript lags our send-keys
-      // by a tick" (must not mark restart done — retry next tick). See
-      // Case B in docs: boot ≥ DAILY_RESTART_AT after host was off.
-      let firedSleepThisTick = false;
+      // Dedupe by reading the disk sleep log. The log survives supervisor
+      // restarts, so "already fired today" holds across pm2 bounces within
+      // the same local day.
       if (
         sleepTarget &&
-        lastSleepFiredDate.get(bot.name) !== todayStr &&
         minutesNow >= sleepTarget.h * 60 + sleepTarget.mm
       ) {
-        // Transcript check first: if claude already has a SLEEP.md user
-        // message from today (e.g., supervisor restarted and lost memory),
-        // don't re-fire.
-        const recent = sleepTriggeredRecently(bot);
+        const recent = readSleepLog(bot);
         const alreadyToday = recent.ok && sameLocalDate(recent.at, now);
-        if (alreadyToday) {
-          console.log(
-            `[sleep] ${bot.name}: already fired today per transcript (at ${recent.at.toISOString()}), skipping catch-up`
-          );
-        } else {
+        if (!alreadyToday) {
           const ctx = recent.ok
-            ? `transcript stale (latest SLEEP.md at ${recent.at.toISOString()})`
+            ? `log stale (last sleep at ${recent.at.toISOString()})`
             : recent.reason;
           console.log(
             `[sleep] ${bot.name}: catch-up fire (minutesNow=${minutesNow}, target=${sleepTarget.h * 60 + sleepTarget.mm}; ${ctx})`
           );
-          firedSleepThisTick = fireSleep(bot);
+          fireSleep(bot);
         }
-        lastSleepFiredDate.set(bot.name, todayStr);
       }
 
       // --- Restart: scheduled daily (sleep-confirmed, ≥1h old) or uptime. ---
+      // fireSleep (above) writes the disk log synchronously, so readSleepLog
+      // here sees the fresh entry in the same tick: catch-up → age < 1h →
+      // "too fresh, hold" — no transcript-lag Case B needed.
       let trigger = null;
       let reason = '';
 
@@ -851,23 +836,12 @@ export function createBotManager({ bots, config, onEvent = () => {} }) {
         lastRestartFiredDate.get(bot.name) !== todayStr &&
         minutesNow >= dailyTarget.h * 60 + dailyTarget.mm
       ) {
-        const check = sleepTriggeredRecently(bot);
+        const check = readSleepLog(bot);
         if (!check.ok) {
-          if (firedSleepThisTick) {
-            // Case B: sleep was just sent via tmux send-keys this tick, but
-            // claude hasn't echoed it into the jsonl transcript yet. Do NOT
-            // mark today's restart done — let the next tick see the entry
-            // and fall through to the "sleep too fresh" branch below, which
-            // keeps re-checking until the entry is ≥1h old.
-            console.log(
-              `[daily-restart] ${bot.name}: holding — sleep fired this tick (${check.reason}); transcript lag expected, will retry next tick`
-            );
-          } else {
-            const msg = `${bot.name} daily restart skipped — ${check.reason}`;
-            console.log(`[daily-restart] ${msg}`);
-            onEvent(msg);
-            lastRestartFiredDate.set(bot.name, todayStr);
-          }
+          const msg = `${bot.name} daily restart skipped — ${check.reason}`;
+          console.log(`[daily-restart] ${msg}`);
+          onEvent(msg);
+          lastRestartFiredDate.set(bot.name, todayStr);
         } else {
           const sleepAgeMs = Date.now() - check.at.getTime();
           const minAgeMs = RESTART_AFTER_SLEEP_MIN_HOURS * 3600_000;

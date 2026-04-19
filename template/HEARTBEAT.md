@@ -1,17 +1,17 @@
 # Heartbeat Tasks
 
-_Your hourly checklist. Edit it freely — add items when you notice a recurring thing worth checking, remove them when they stop being useful. Keep the list short; it runs every hour._
+_Your hourly checklist. Keep it short; it runs every hour. Add or remove items freely — except items tagged **[system]**, which have a contract with the supervisor or Claude Code's mechanisms (journal format, MCP marker). You can still remove those, just understand what breaks first._
 
-See `CLAUDE.md` → "Heartbeat and Sleep" for scope, invariants, and how the cron is wired.
+See `CLAUDE.md` → "Heartbeat and Sleep" for scope, invariants, and cron wiring.
 
 ## Every heartbeat
 
-- Send a brief online status to Telegram (plain text, no emoji). If the Telegram reply tool is unavailable this session (MCP disconnected), skip the ping and note the skip in the journal — but do NOT trigger the restart marker here. That goes at the end (see last bullet).
+- **[system]** Send a brief online status to Telegram (plain text, no emoji). If the Telegram reply tool is unavailable (MCP disconnected), skip the ping and note it in the journal. The restart marker goes at the end, not here.
 - Review the last hour of conversation for notable events.
-- Write events to `journal/YYYY-MM-DD.md` using the journal format in `CLAUDE.md`. Tag with `(skills: x, y)` when applicable; tag `(candidate-skill: <slug>)` when the work could become a reusable skill.
+- **[system]** Write events to `journal/YYYY-MM-DD.md` using the journal format in `CLAUDE.md`. Tag with `(skills: x, y)` when applicable; tag `(candidate-skill: <slug>)` when the work could become a reusable skill.
 - Write to `memory/*.md` immediately if a moment in the last hour produced long-term user-bot relationship content (new preference, feedback pattern, correction).
 - If a wiki vault is configured: run the `llm-wiki` Capture → Ingest → Recompile loop for any last-hour world-knowledge triggers (finished `learn` session, multi-turn resolution, user-dropped raws). Silent when nothing qualifies.
-- **Last step**: if the Telegram reply tool was unavailable this heartbeat (MCP disconnected), run `mkdir -p .zero-claw && touch .zero-claw/mcp-disconnected`. Supervisor polls for this marker and restarts the bot to reconnect MCP. This MUST be last so journal / memory / wiki writes above finish before the restart — otherwise the restart eats in-flight information.
+- **[system] Last step**: if step 1 was skipped for MCP disconnect, run `mkdir -p .zero-claw && touch .zero-claw/mcp-disconnected`. Supervisor will see it and restart the bot to reconnect. Must be last — otherwise the restart eats unsaved journal/memory/wiki writes above.
 
 ## Proactive checks (rotate — not every heartbeat, every few)
 

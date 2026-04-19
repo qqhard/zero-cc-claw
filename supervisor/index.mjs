@@ -52,16 +52,14 @@ const MANAGER_CONFIG = {
   // window; supervisor catches up on next tick). See bots.mjs for full notes.
   SLEEP_AT: process.env.SLEEP_AT ?? '01:00',
   SLEEP_COMMAND:
-    process.env.SLEEP_COMMAND ||
-    '读取 SLEEP.md 并按其执行。同时阅读昨天的日记（以覆盖 catch-up 的场景）。',
+    process.env.SLEEP_COMMAND || 'Read SLEEP.md and follow it.',
   DAILY_RESTART_AT: process.env.DAILY_RESTART_AT ?? '06:00',
   RESTART_AFTER_SLEEP_MIN_HOURS: parseFloat(
     process.env.RESTART_AFTER_SLEEP_MIN_HOURS ?? '1'
   ),
   SLEEP_DONE_MAX_AGE_HOURS: parseFloat(
-    process.env.SLEEP_DONE_MAX_AGE_HOURS ?? '8'
+    process.env.SLEEP_DONE_MAX_AGE_HOURS ?? '48'
   ),
-  SLEEP_TRIGGER_PATTERN: process.env.SLEEP_TRIGGER_PATTERN || 'SLEEP.md',
   MAX_UPTIME_HOURS: parseFloat(process.env.MAX_UPTIME_HOURS ?? '24'),
 };
 
