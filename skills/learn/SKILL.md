@@ -54,9 +54,9 @@ Two things in one turn:
 - **3 consensuses** — what the field broadly agrees on. Stops the user re-litigating settled material.
 - **3 controversies** — what's still debated, where smart people disagree, or where the textbook answer is questionable. Tells the user which parts to hold loosely vs. firmly, and sparks their own exploration.
 
-Present map + briefing together. Ask a single confirmation question: does this shape match what they want, or should we adjust? **Do not proceed without confirmation.**
+Present map + briefing together, **auto-generated from the Step 1 probe answers**, then proceed directly into Step 3 (Build the Start module). **Do not ask "does this shape match?"** — the learner doesn't have the domain knowledge to judge what they haven't learned yet. If something is obviously mis-targeted (e.g., includes modules the user already said they've mastered), fix it before presenting; otherwise trust the signal from Step 1 and move on. The user can always course-correct mid-stream by speaking up.
 
-If `memory/learn/<slug>.md` exists, use last session's map as the starting draft and note what's changed; otherwise create the file after the user confirms.
+If `memory/learn/<slug>.md` exists, use last session's map as the starting draft and note what's changed; otherwise create the file when you present the map.
 
 ### Step 3 — Build phase (default mode — most of the session lives here)
 
@@ -67,10 +67,13 @@ For each module on the path from Start → End, teach it. Every module covers th
 
 Use visible structure (sub-headings, short lists). 6–15 lines per module is normal — a *structured* teach is not a wall of text.
 
-**Only confirmation questions are allowed in Build phase.** OK examples:
-- "Does this framing match what you've seen before?"
-- "Which of these two sub-parts feels less clear?"
-- "Want me to go deeper on the example before moving on?"
+**Don't ask the user to self-assess the teaching.** "Is it clear?" / "Which sub-part feels cloudy?" / "Want me to go deeper on (a) or (b)?" — all require the domain knowledge the user is trying to acquire. The answers are fake yes-es or noise picks. Don't ask them.
+
+After teaching a module, do **one of these two** — nothing else:
+- **Proceed** to the next module directly (state what's next in one line, then start teaching it or wait for user input).
+- **Offer Challenge** with the one question form the user can genuinely answer: **"ready to be tested on [module]?" (yes/no)**. That's a preference about their own comfort — answerable without domain knowledge.
+
+Use Challenge (opt-in) to surface gaps. Trust the Challenge signal over self-report, because self-report doesn't exist in a form that works.
 
 **Not allowed in Build:** application problems, "what would happen if...", "predict...", "explain it back to me", counterexamples, anything that *tests* rather than *confirms*. Those belong in Challenge, which requires an explicit mode switch.
 
@@ -157,7 +160,7 @@ Do **not** index this file in `memory/MEMORY.md` — it's structured state, not 
 
 - **Match the user's language** (English or Chinese). Never switch mid-session.
 - **Structure beats length.** A teaching turn with visible sub-parts at 10–15 lines is fine. The wall-of-text failure mode is *unstructured* prose, not long prose.
-- **One question per turn.** Whether probe (Step 1), confirmation (Build) or challenge (Challenge), never stack two in a single message.
+- **One question per turn.** Whether probe (Step 1), readiness offer (end of Build module) or challenge (Challenge), never stack two in a single message.
 - **Honest uncertainty.** If something is genuinely unsettled, say so — and it's often a candidate for the "3 controversies" list. Don't fabricate a clean answer to keep the flow tidy.
 - **No closing summary.** The map, `next_module`, and `difficulty` are the summary. Point at where next session will open, nothing more.
 
@@ -167,11 +170,12 @@ Do **not** index this file in `memory/MEMORY.md` — it's structured state, not 
 - **Endless probing.** More than five rounds in Step 1 means the topic isn't scoped — draft a map and let the user react to it instead.
 - **Stacking probes.** Two MCQ questions in one turn violates one-question-per-turn. Each round is its own message.
 - **Missing the Pareto briefing.** Handing over a module list without the 3 consensuses / 3 controversies strips out the spark — the user doesn't know which parts are load-bearing, settled, or contested.
-- **Slipping into challenge during Build.** "Just quickly, what would happen if..." is a mode violation. Ask a confirmation question or keep teaching; don't sneak a test in.
+- **Asking the learner to confirm domain content.** "Does this map match what you want?" / "Which sub-part felt cloudy?" / "Want me to go deeper on (a) or (b)?" — all require the knowledge they're trying to acquire. Auto-generate the map from Step 1, proceed through Build without self-assessment prompts, and surface gaps via Challenge (opt-in) instead. The only legitimate end-of-module question is the binary **"ready to be tested?"** — that's a preference, not a domain judgment.
+- **Slipping into challenge during Build.** "Just quickly, what would happen if..." is a mode violation. Keep teaching or offer the Challenge opt-in — don't sneak a test in.
 - **Probing into emptiness.** If the user doesn't know, Build wasn't complete. Return to Build and teach — don't escalate the probe.
 - **A map of 15 unconnected concepts.** A map is 4–8 modules with dependencies drawn. Larger than that is a syllabus, not a map — compress or split the topic.
 - **Pushing forward when the user is at −2.** Repeated L5–L6 hints mean go back and rebuild, not "just one more hint."
-- **Asking "do you understand?"** — always yes, no signal. In Build, ask which sub-part feels cloudy. In Challenge, ask them to restate the key point in their own words.
+- **Asking "do you understand?" or any self-assessment.** Always fake yes or noise pick — no signal. Use Challenge questions to surface gaps, not self-report.
 - Switching languages mid-session.
 - Stacking two questions in one turn.
 - Indexing `memory/learn/*.md` files in `memory/MEMORY.md` — they're structured state.

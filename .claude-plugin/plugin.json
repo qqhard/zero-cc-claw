@@ -1,6 +1,6 @@
 {
   "name": "zero-claw",
   "description": "Turn Claude Code into a personal AI assistant via Telegram. Zero infrastructure — just compose existing tools.",
-  "version": "0.19.11",
+  "version": "0.19.12",
   "keywords": ["telegram", "assistant", "bot", "supervisor", "memory"]
 }
