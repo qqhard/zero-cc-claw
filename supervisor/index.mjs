@@ -9,9 +9,9 @@ import { createCommands, UserError } from './commands.mjs';
 
 // --- Config ---
 // Supervisor bot token is OPTIONAL. When absent the supervisor runs headless:
-// watchdog, context-check, sleep trigger and daily restart all still run — you
-// just can't reach them from Telegram. `pushToUsers` falls back to a no-op so
-// the bot-manager layer is oblivious; console.log inside `bots.mjs` is still
+// watchdog, sleep trigger and daily restart all still run — you just can't
+// reach them from Telegram. `pushToUsers` falls back to a no-op so the
+// bot-manager layer is oblivious; console.log inside `bots.mjs` is still
 // the source of truth for event traces in pm2 logs.
 //
 // The local Unix-socket surface below is independent of the Telegram bot —
@@ -23,22 +23,15 @@ const ALLOWED_USERS = new Set(
   (process.env.ALLOWED_USERS || '').split(',').filter(Boolean).map(Number)
 );
 
-const CONTEXT_THRESHOLD = parseInt(process.env.CONTEXT_THRESHOLD ?? '50');
-
 const MANAGER_CONFIG = {
   START_CMD: process.env.START_CMD || './start.sh',
   WATCHDOG_INTERVAL: parseInt(process.env.WATCHDOG_INTERVAL ?? '60'),
   MAX_CONSECUTIVE_RESTARTS: parseInt(
     process.env.MAX_CONSECUTIVE_RESTARTS ?? '5'
   ),
-  CONTEXT_CHECK_INTERVAL: parseInt(
-    process.env.CONTEXT_CHECK_INTERVAL ?? '86400'
-  ),
-  CONTEXT_THRESHOLD,
   // Reuse a /context result before re-querying. Running /context adds a line
   // to the bot's TUI history, so we don't want to hit it on every /status
-  // call. Daily context-check uses the same cache with a 24h interval, so it
-  // always forces a fresh query naturally.
+  // call.
   CONTEXT_CACHE_SECONDS: parseInt(process.env.CONTEXT_CACHE_SECONDS ?? '300'),
   // Upper bound on how long we'll wait for /context to render before giving
   // up. bots.mjs polls the pane (every 500ms) inside this window — fast
@@ -232,8 +225,8 @@ const COMMAND_MENU = [
   { command: 'restart', description: 'Restart bot' },
   { command: 'start', description: 'Start bot' },
   { command: 'stop', description: 'Stop bot' },
-  { command: 'logs', description: 'Recent logs (80 lines)' },
-  { command: 'screen', description: 'Current screen' },
+  { command: 'logs', description: 'Supervisor logs (default 80 lines)' },
+  { command: 'screen', description: 'Current bot screen (default 30 lines)' },
   { command: 'send', description: 'Type text into the bot TUI' },
   { command: 'monitor', description: 'Toggle periodic pane-diff push' },
   { command: 'help', description: 'Show help' },

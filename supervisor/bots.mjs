@@ -64,8 +64,6 @@ export function createBotManager({ bots, config, onEvent = () => {} }) {
     START_CMD,
     WATCHDOG_INTERVAL,
     MAX_CONSECUTIVE_RESTARTS,
-    CONTEXT_CHECK_INTERVAL,
-    CONTEXT_THRESHOLD,
     CONTEXT_CACHE_SECONDS,
     CONTEXT_QUERY_WAIT_MS,
     MONITOR_INTERVAL,
@@ -911,31 +909,6 @@ export function createBotManager({ bots, config, onEvent = () => {} }) {
     }
   }
 
-  // --- Context-check tick (daily by default) ---
-  async function contextCheckTick() {
-    for (const bot of BOTS) {
-      if (inRestartGrace(bot.name)) continue;
-      if (!isRunning(bot)) continue;
-      const usage = await getContextUsage(bot, { force: true });
-      if (!usage) {
-        console.log(`[context] ${bot.name}: query failed, skipping`);
-        continue;
-      }
-      console.log(
-        `[context] ${bot.name}: ${usage.pct}% used (${usage.tokens}/${usage.limit})`
-      );
-      if (usage.pct > CONTEXT_THRESHOLD) {
-        onEvent(
-          `${bot.name} context at ${usage.pct}% — restarting for fresh session`
-        );
-        markRestart(bot.name);
-        invalidateContextCache(bot.name);
-        resetRestartState(bot.name);
-        await startProcess(bot);
-      }
-    }
-  }
-
   const sleepTarget = SLEEP_AT ? parseHHMM(SLEEP_AT) : null;
   if (SLEEP_AT && !sleepTarget) {
     console.error(`SLEEP_AT invalid: ${SLEEP_AT} (expected HH:MM)`);
@@ -1062,13 +1035,6 @@ export function createBotManager({ bots, config, onEvent = () => {} }) {
     setInterval(watchdogTick, WATCHDOG_INTERVAL * 1000);
     console.log(
       `Watchdog enabled, interval: ${WATCHDOG_INTERVAL}s, max restarts: ${MAX_CONSECUTIVE_RESTARTS}`
-    );
-  }
-
-  if (CONTEXT_CHECK_INTERVAL > 0) {
-    setInterval(contextCheckTick, CONTEXT_CHECK_INTERVAL * 1000);
-    console.log(
-      `Context check enabled, interval: ${CONTEXT_CHECK_INTERVAL}s, threshold: >${CONTEXT_THRESHOLD}%`
     );
   }
 

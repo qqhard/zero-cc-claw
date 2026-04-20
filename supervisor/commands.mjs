@@ -13,7 +13,32 @@
 // Running it from the CLI would just enable Telegram pushes you can't see
 // locally, so the CLI surface hides the subcommand altogether.
 
+import fs from 'node:fs';
+
 export class UserError extends Error {}
+
+// Read last N lines of a file without slurping the whole thing. Reads at
+// most the trailing 256KB — enough for any reasonable tail request, bounded
+// so a giant pm2 log doesn't balloon memory. Returns null on I/O error.
+function tailFile(filePath, n) {
+  try {
+    const stat = fs.statSync(filePath);
+    if (stat.size === 0) return '';
+    const maxBytes = 256 * 1024;
+    const bytesToRead = Math.min(stat.size, maxBytes);
+    const fd = fs.openSync(filePath, 'r');
+    const buf = Buffer.alloc(bytesToRead);
+    fs.readSync(fd, buf, 0, bytesToRead, stat.size - bytesToRead);
+    fs.closeSync(fd);
+    const text = buf.toString('utf-8');
+    const lines = text.split('\n');
+    // Drop the first (likely partial) line if we started mid-file.
+    if (bytesToRead < stat.size) lines.shift();
+    return lines.slice(-n).join('\n');
+  } catch {
+    return null;
+  }
+}
 
 export function createCommands({ manager, bots, config, surface = 'telegram' }) {
   const includeMonitor = surface !== 'cli';
@@ -49,10 +74,7 @@ export function createCommands({ manager, bots, config, surface = 'telegram' }) 
     const age = Math.round((Date.now() - usage.at) / 1000);
     const tokens = `${formatTokens(usage.tokens)} / ${formatTokens(usage.limit)}`;
     const model = usage.model ? `\nmodel: ${usage.model}` : '';
-    return (
-      `context: ${tokens} (${usage.pct}%) · ${age}s ago · restart >${config.CONTEXT_THRESHOLD}%` +
-      model
-    );
+    return `context: ${tokens} (${usage.pct}%) · ${age}s ago` + model;
   }
 
   async function formatStatusLine(bot) {
@@ -118,16 +140,36 @@ export function createCommands({ manager, bots, config, surface = 'telegram' }) 
       return `${bot.name} started`;
     },
 
-    async logs(botName) {
-      const bot = resolveBot(botName);
-      const content = manager.capturePane(bot, 80);
-      if (!content?.trim()) return 'No logs';
-      return content.length > 4000 ? '...' + content.slice(-4000) : content;
+    async logs(lines) {
+      // Supervisor's own logs, not a bot's pane. pm2 injects the log paths
+      // into the child env (`pm_out_log_path` / `pm_err_log_path`), so we
+      // read them directly — no dependency on `pm2` CLI being available.
+      const n = Number.isFinite(lines) && lines > 0 ? lines : 80;
+      const outPath = process.env.pm_out_log_path;
+      const errPath = process.env.pm_err_log_path;
+      if (!outPath && !errPath) {
+        throw new UserError(
+          'Supervisor logs unavailable (not running under pm2)'
+        );
+      }
+      const sections = [];
+      if (outPath) {
+        const content = tailFile(outPath, n);
+        if (content?.trim()) sections.push(`=== stdout ===\n${content}`);
+      }
+      if (errPath) {
+        const content = tailFile(errPath, n);
+        if (content?.trim()) sections.push(`=== stderr ===\n${content}`);
+      }
+      if (sections.length === 0) return 'No supervisor logs';
+      const text = sections.join('\n\n');
+      return text.length > 4000 ? '...' + text.slice(-4000) : text;
     },
 
-    async screen(botName) {
+    async screen(botName, lines) {
       const bot = resolveBot(botName);
-      const content = manager.capturePane(bot, 30);
+      const n = Number.isFinite(lines) && lines > 0 ? lines : 30;
+      const content = manager.capturePane(bot, n);
       if (!content?.trim()) return 'No screen';
       return content;
     },
@@ -180,8 +222,8 @@ export function createCommands({ manager, bots, config, surface = 'telegram' }) 
         'restart [bot] - Restart bot',
         'start [bot] - Start bot (re-enables auto-restart)',
         'stop [bot] - Stop bot',
-        'logs [bot] - Recent logs (80 lines)',
-        'screen [bot] - Current screen (30 lines)',
+        'logs [lines] - Supervisor logs (default 80 lines)',
+        'screen [bot] [lines] - Current bot screen (default 30 lines)',
         'send [bot] <text> - Type text into the bot TUI',
       ];
       if (includeMonitor) {
@@ -212,10 +254,24 @@ export function createCommands({ manager, bots, config, surface = 'telegram' }) 
         return handlers.start(args[0]);
       case 'stop':
         return handlers.stop(args[0]);
-      case 'logs':
-        return handlers.logs(args[0]);
-      case 'screen':
-        return handlers.screen(args[0]);
+      case 'logs': {
+        const lines =
+          args[0] && /^\d+$/.test(args[0]) ? parseInt(args[0]) : undefined;
+        return handlers.logs(lines);
+      }
+      case 'screen': {
+        let rest = args.slice();
+        let botName;
+        let lines;
+        if (rest[0] && botNames.has(rest[0])) {
+          botName = rest[0];
+          rest = rest.slice(1);
+        }
+        if (rest[0] && /^\d+$/.test(rest[0])) {
+          lines = parseInt(rest[0]);
+        }
+        return handlers.screen(botName, lines);
+      }
 
       case 'send': {
         // First positional is the bot name only if it actually matches one;
