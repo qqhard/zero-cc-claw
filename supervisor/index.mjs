@@ -47,12 +47,6 @@ const MANAGER_CONFIG = {
   SLEEP_COMMAND:
     process.env.SLEEP_COMMAND || 'Read SLEEP.md and follow it.',
   DAILY_RESTART_AT: process.env.DAILY_RESTART_AT ?? '06:00',
-  RESTART_AFTER_SLEEP_MIN_HOURS: parseFloat(
-    process.env.RESTART_AFTER_SLEEP_MIN_HOURS ?? '1'
-  ),
-  SLEEP_DONE_MAX_AGE_HOURS: parseFloat(
-    process.env.SLEEP_DONE_MAX_AGE_HOURS ?? '48'
-  ),
   MAX_UPTIME_HOURS: parseFloat(process.env.MAX_UPTIME_HOURS ?? '24'),
 };
 

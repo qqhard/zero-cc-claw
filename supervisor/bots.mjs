@@ -71,8 +71,6 @@ export function createBotManager({ bots, config, onEvent = () => {} }) {
     SLEEP_AT,
     SLEEP_COMMAND,
     DAILY_RESTART_AT,
-    RESTART_AFTER_SLEEP_MIN_HOURS,
-    SLEEP_DONE_MAX_AGE_HOURS,
     MAX_UPTIME_HOURS,
   } = config;
 
@@ -684,16 +682,10 @@ export function createBotManager({ bots, config, onEvent = () => {} }) {
   // --- Sleep + daily-restart scheduler (sleep-aware) ---
   // Disk-backed sleep log. The supervisor is the only writer: every successful
   // fireSleep() writes `<workDir>/.zero-claw/sleep-log.json` with the ISO
-  // timestamp of the send. readSleepLog then answers "did sleep fire within
-  // SLEEP_DONE_MAX_AGE_HOURS?" directly from that file, independent of whether
-  // claude actually processed the message or what its transcripts look like.
-  //
-  // Why not scan claude's transcripts (prior behavior): transcript mtime is
-  // tied to session activity, not to the sleep event itself, and an 8–12h
-  // catch-up window could miss the 01:00 entry by mid-afternoon, causing the
-  // scheduler to re-fire sleep as catch-up. The disk log is authoritative and
-  // cheap, and the supervisor already owns this directory for the MCP
-  // disconnect marker.
+  // timestamp of the send. "Did sleep fire today?" is answered by comparing
+  // the log's timestamp against the current local date (sameLocalDate), not
+  // by an absolute age window — a sleep at 01:00 counts as "today" until
+  // 00:00 next day, even if the scheduler only notices at 23:00.
   function sleepLogPath(bot) {
     return path.join(bot.workDir, '.zero-claw', 'sleep-log.json');
   }
@@ -715,13 +707,6 @@ export function createBotManager({ bots, config, onEvent = () => {} }) {
     const ts = new Date(obj.lastFiredAt).getTime();
     if (!Number.isFinite(ts)) {
       return { ok: false, reason: 'sleep log timestamp unreadable' };
-    }
-    const cutoffMs = Date.now() - SLEEP_DONE_MAX_AGE_HOURS * 3600_000;
-    if (ts < cutoffMs) {
-      return {
-        ok: false,
-        reason: `last sleep ${new Date(ts).toISOString()} older than ${SLEEP_DONE_MAX_AGE_HOURS}h window`,
-      };
     }
     return { ok: true, at: new Date(ts) };
   }
@@ -932,10 +917,17 @@ export function createBotManager({ bots, config, onEvent = () => {} }) {
       // startProcess through the 'daily' trigger branch).
       if (stoppedByUser.has(bot.name)) continue;
 
-      // --- Sleep trigger (catch-up: fire any time past SLEEP_AT today) ---
-      // Dedupe by reading the disk sleep log. The log survives supervisor
-      // restarts, so "already fired today" holds across pm2 bounces within
-      // the same local day.
+      // --- Sleep trigger ---
+      // Dedupe via sameLocalDate on the disk sleep log: once sleep fires
+      // today (local date), no further fires until tomorrow. The log
+      // survives supervisor restarts.
+      //
+      // On-time vs catch-up: "on-time" = tick is within ON_TIME_WINDOW of
+      // SLEEP_AT (the scheduler's scheduled fire). "Catch-up" = supervisor
+      // noticed the miss later (supervisor was down at SLEEP_AT, or pm2
+      // bounced it). Catch-up is gated by claude's uptime: a bot that has
+      // been running <24h hasn't accumulated enough state to warrant sleep,
+      // so catch-up is skipped. On-time always fires.
       if (
         sleepTarget &&
         minutesNow >= sleepTarget.h * 60 + sleepTarget.mm
@@ -943,20 +935,38 @@ export function createBotManager({ bots, config, onEvent = () => {} }) {
         const recent = readSleepLog(bot);
         const alreadyToday = recent.ok && sameLocalDate(recent.at, now);
         if (!alreadyToday) {
-          const ctx = recent.ok
-            ? `log stale (last sleep at ${recent.at.toISOString()})`
-            : recent.reason;
-          console.log(
-            `[sleep] ${bot.name}: catch-up fire (minutesNow=${minutesNow}, target=${sleepTarget.h * 60 + sleepTarget.mm}; ${ctx})`
-          );
-          fireSleep(bot);
+          const sleepTargetMins = sleepTarget.h * 60 + sleepTarget.mm;
+          const minutesPast = minutesNow - sleepTargetMins;
+          const ON_TIME_WINDOW_MINS = 90;
+          const isCatchUp = minutesPast >= ON_TIME_WINDOW_MINS;
+          let skipReason = null;
+          if (isCatchUp) {
+            const uptimeS = claudeUptimeSeconds(bot);
+            if (uptimeS !== null && uptimeS < 24 * 3600) {
+              skipReason = `claude uptime ${(uptimeS / 3600).toFixed(1)}h < 24h`;
+            }
+          }
+          if (skipReason) {
+            console.log(
+              `[sleep] ${bot.name}: catch-up skipped (minutesPast=${minutesPast}; ${skipReason})`
+            );
+          } else {
+            const ctx = recent.ok
+              ? `log stale (last sleep at ${recent.at.toISOString()})`
+              : recent.reason;
+            console.log(
+              `[sleep] ${bot.name}: ${isCatchUp ? 'catch-up' : 'on-time'} fire (minutesNow=${minutesNow}, target=${sleepTargetMins}; ${ctx})`
+            );
+            fireSleep(bot);
+          }
         }
       }
 
-      // --- Restart: scheduled daily (sleep-confirmed, ≥1h old) or uptime. ---
-      // fireSleep (above) writes the disk log synchronously, so readSleepLog
-      // here sees the fresh entry in the same tick: catch-up → age < 1h →
-      // "too fresh, hold" — no transcript-lag Case B needed.
+      // --- Restart: fixed-time daily or uptime cap. ---
+      // Daily restart fires once per local day, on the first tick within
+      // the on-time window past DAILY_RESTART_AT. No catch-up: if
+      // supervisor was down across the window, today's restart is missed
+      // — MAX_UPTIME_HOURS is the safety net for a stuck-running claude.
       let trigger = null;
       let reason = '';
 
@@ -965,49 +975,18 @@ export function createBotManager({ bots, config, onEvent = () => {} }) {
         lastRestartFiredDate.get(bot.name) !== todayStr &&
         minutesNow >= dailyTarget.h * 60 + dailyTarget.mm
       ) {
-        const check = readSleepLog(bot);
-        if (!check.ok) {
-          const msg = `${bot.name} daily restart skipped — ${check.reason}`;
-          console.log(`[daily-restart] ${msg}`);
-          onEvent(msg);
-          lastRestartFiredDate.set(bot.name, todayStr);
+        const dailyTargetMins = dailyTarget.h * 60 + dailyTarget.mm;
+        const minutesPast = minutesNow - dailyTargetMins;
+        const ON_TIME_WINDOW_MINS = 90;
+        if (minutesPast <= ON_TIME_WINDOW_MINS) {
+          trigger = 'daily';
+          reason = `scheduled at ${DAILY_RESTART_AT}`;
         } else {
-          const sleepAgeMs = Date.now() - check.at.getTime();
-          const minAgeMs = RESTART_AFTER_SLEEP_MIN_HOURS * 3600_000;
-          if (sleepAgeMs >= minAgeMs) {
-            // Freshness check: if the running claude was started AFTER the
-            // sleep trigger, today's "restart after sleep" has already been
-            // satisfied by something (watchdog, manual /restart, previous
-            // supervisor's daily-restart that got forgotten across a
-            // supervisor pm2 restart). Skip — claude is already fresh.
-            // Invariant we preserve: "claude's process is newer than the
-            // latest sleep trigger by daily-restart time." Whether *this*
-            // supervisor process did the restart is irrelevant.
-            const uptimeS = claudeUptimeSeconds(bot);
-            const claudeStartMs =
-              uptimeS !== null ? Date.now() - uptimeS * 1000 : null;
-            if (
-              claudeStartMs !== null &&
-              claudeStartMs > check.at.getTime()
-            ) {
-              console.log(
-                `[daily-restart] ${bot.name}: already satisfied — claude started ${new Date(claudeStartMs).toISOString()} (uptime ${(uptimeS / 60).toFixed(1)}m) is newer than sleep at ${check.at.toISOString()}; marking today done`
-              );
-              lastRestartFiredDate.set(bot.name, todayStr);
-            } else {
-              trigger = 'daily';
-              reason = `sleep confirmed at ${check.at.toISOString()} (age ${(sleepAgeMs / 3600_000).toFixed(2)}h)`;
-              lastRestartFiredDate.set(bot.name, todayStr);
-            }
-          } else {
-            // Sleep still too fresh — wait for the next tick. Logged so
-            // post-mortems can see the scheduler is actively waiting rather
-            // than stuck.
-            console.log(
-              `[daily-restart] ${bot.name}: holding — sleep at ${check.at.toISOString()} is ${(sleepAgeMs / 60_000).toFixed(1)}m old, need ≥${(minAgeMs / 60_000).toFixed(0)}m`
-            );
-          }
+          console.log(
+            `[daily-restart] ${bot.name}: missed window (minutesPast=${minutesPast} > ${ON_TIME_WINDOW_MINS}); skipping today`
+          );
         }
+        lastRestartFiredDate.set(bot.name, todayStr);
       }
 
       if (!trigger && MAX_UPTIME_HOURS > 0) {
@@ -1039,15 +1018,20 @@ export function createBotManager({ bots, config, onEvent = () => {} }) {
   }
 
   if (sleepTarget || dailyTarget || MAX_UPTIME_HOURS > 0) {
-    setInterval(schedulerTick, 60_000);
+    // Hourly is plenty — sleep / daily-restart / uptime-cap are all
+    // coarse-grained events. 60s ticks wrote a lot of noise (holding
+    // logs) without improving precision. First tick runs immediately so
+    // supervisor restarts don't delay catch-up by up to an hour.
+    schedulerTick().catch((err) =>
+      console.error(`[scheduler] initial tick failed: ${err.message}`)
+    );
+    setInterval(schedulerTick, 3600_000);
     const parts = [];
     if (sleepTarget) parts.push(`sleep at ${SLEEP_AT} local`);
     if (dailyTarget)
-      parts.push(
-        `restart at ${DAILY_RESTART_AT} local (sleep ≥${RESTART_AFTER_SLEEP_MIN_HOURS}h old, window: ${SLEEP_DONE_MAX_AGE_HOURS}h)`
-      );
+      parts.push(`restart at ${DAILY_RESTART_AT} local`);
     if (MAX_UPTIME_HOURS > 0) parts.push(`uptime cap: ${MAX_UPTIME_HOURS}h`);
-    console.log(`Scheduler: ${parts.join('; ')}`);
+    console.log(`Scheduler: ${parts.join('; ')} — tick 1h`);
   }
 
   return {
