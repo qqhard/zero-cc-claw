@@ -1,6 +1,6 @@
 {
   "name": "zero-claw",
-  "version": "0.20.1",
+  "version": "0.20.2",
   "description": "Turn Claude Code into a personal AI assistant via Telegram",
   "type": "module",
   "private": true,

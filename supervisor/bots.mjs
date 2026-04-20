@@ -202,10 +202,27 @@ export function createBotManager({ bots, config, onEvent = () => {} }) {
   //   1. `<bot-dir>/.telegram/bot.pid` — the plugin's own "current primary"
   //      pointer (overwritten on each new-server launch, so it only knows
   //      the latest one).
-  //   2. /proc/*/environ scan for TELEGRAM_STATE_DIR matching this bot.
-  //      Catches orphans from earlier sessions that bot.pid has forgotten.
-  // The two together are complementary — bot.pid is precise, the env scan
-  // is exhaustive (but Linux-only).
+  //   2. /proc/*/environ scan for TELEGRAM_STATE_DIR matching this bot,
+  //      THEN filtered by cmdline to bun plugin processes only. Catches
+  //      orphans from earlier sessions that bot.pid has forgotten.
+  //
+  // The cmdline filter is load-bearing: start.sh exports TELEGRAM_STATE_DIR
+  // before exec'ing claude, so every descendant (claude itself, any shell,
+  // all subagents) shows the variable in /proc/<pid>/environ. An unfiltered
+  // scan returns claude + bash + bun — SIGKILLing that set during a
+  // plugin-only restart tore the whole bot session down.
+  function isPluginCmd(cmdline) {
+    if (!cmdline) return false;
+    // cmdline comes in with \0 separators from /proc, or spaces from ps.
+    // Normalize so a simple substring check works either way.
+    const s = cmdline.replace(/\0/g, ' ');
+    // Must be invoked by `bun` (path or bare) — rules out claude / bash.
+    if (!/(^|[/\s])bun(\s|$)/.test(s)) return false;
+    // Must reference the telegram plugin path or the server entrypoint —
+    // rules out unrelated bun processes sharing the env by accident.
+    return s.includes('claude-plugins-official/telegram') || s.includes('server.ts');
+  }
+
   function findTelegramPluginPids(bot) {
     const targetDir = path.join(bot.workDir, '.telegram');
     const pids = new Set();
@@ -223,7 +240,9 @@ export function createBotManager({ bots, config, onEvent = () => {} }) {
         if (!/^\d+$/.test(entry)) continue;
         const pid = parseInt(entry);
         const env = readProcEnv(pid);
-        if (env && env.TELEGRAM_STATE_DIR === targetDir) pids.add(pid);
+        if (!env || env.TELEGRAM_STATE_DIR !== targetDir) continue;
+        if (!isPluginCmd(getProcCmd(pid))) continue;
+        pids.add(pid);
       }
     } catch {
       /* /proc not available (macOS) — bot.pid still works */
@@ -238,20 +257,62 @@ export function createBotManager({ bots, config, onEvent = () => {} }) {
   // only honors ONE polling connection per token, so orphans + new server
   // rotate randomly, silently dropping user messages. Always run this
   // before tearing down the tmux session.
+  //
+  // Two races that broke the simpler previous version (SIGTERM → 500ms →
+  // SIGKILL, single pass, no wait-for-exit):
+  //   1. Killing `bun run` (wrapper) before `bun server.ts` (child) orphans
+  //      the child to ppid=1. Its own orphan watchdog fires at 5s — plenty
+  //      of time for the next tmux new-session to start a second bun that
+  //      collides with the orphan on getUpdates (Telegram returns 409,
+  //      grammy eventually exits its polling loop → silent "zombie" where
+  //      bun is alive + MCP tools present but no inbound messages).
+  //   2. One scan pass can miss a plugin pid whose env block hasn't fully
+  //      materialized yet (e.g. `bun install` mid-exec during `bun run`).
+  //
+  // Mitigation: loop SIGKILL + rescan until the scan is empty, and block
+  // until the killed pids actually exit (not just "signal delivered").
+  // SIGTERM is kept as a best-effort first step — every observed restart
+  // has SIGTERM ignored (server.ts lacks a handler), so the grace window
+  // is short. If upstream ever adds SIGTERM handling, this path gives it
+  // room to flush stdio cleanly.
   async function killTelegramPluginServers(bot) {
-    const pids = findTelegramPluginPids(bot);
-    if (pids.length === 0) return;
-    for (const pid of pids) {
+    const MAX_PASSES = 5;
+    const SIGTERM_GRACE_MS = 200;
+    const REAP_TIMEOUT_MS = 2000;
+    const PROBE_INTERVAL_MS = 50;
+
+    const isAlive = (pid) => {
       try {
-        process.kill(pid, 'SIGTERM');
+        process.kill(pid, 0);
+        return true;
       } catch {
-        /* already gone */
+        return false;
       }
-    }
-    await sleep(500);
-    for (const pid of pids) {
-      try {
-        process.kill(pid, 0); // probe: throws if dead
+    };
+
+    for (let pass = 0; pass < MAX_PASSES; pass++) {
+      const pids = findTelegramPluginPids(bot);
+      if (pids.length === 0) return;
+
+      if (pass === 0 && pids.length > 2) {
+        // Normal restart: wrapper (`bun run`) + `bun server.ts` = 2 pids.
+        // More means the previous cycle leaked — surface it so we can tell
+        // whether the leak is one-shot or accumulating.
+        console.log(
+          `[killProcess] ${bot.name}: WARN ${pids.length} plugin pids on pass 0 (expected ≤2): ${pids.join(',')}`
+        );
+      }
+
+      for (const pid of pids) {
+        try {
+          process.kill(pid, 'SIGTERM');
+        } catch {
+          /* already gone */
+        }
+      }
+      await sleep(SIGTERM_GRACE_MS);
+
+      for (const pid of pids.filter(isAlive)) {
         try {
           process.kill(pid, 'SIGKILL');
           console.log(
@@ -260,23 +321,118 @@ export function createBotManager({ bots, config, onEvent = () => {} }) {
         } catch {
           /* raced to exit */
         }
-      } catch {
-        /* already gone — SIGTERM worked */
       }
+
+      // Block until every pid we just signaled is truly gone. If we return
+      // while anything is still polling, startProcess' tmux new-session
+      // races that survivor on the bot token.
+      const deadline = Date.now() + REAP_TIMEOUT_MS;
+      while (Date.now() < deadline && pids.some(isAlive)) {
+        await sleep(PROBE_INTERVAL_MS);
+      }
+    }
+
+    const remaining = findTelegramPluginPids(bot);
+    if (remaining.length > 0) {
+      console.log(
+        `[killProcess] ${bot.name}: WARN ${remaining.length} plugin pids survived ${MAX_PASSES} reap passes: ${remaining.join(',')}`
+      );
     }
   }
 
-  // Nuke the whole tmux session rather than SIGTERM individual children.
-  // Why: claude-code's TUI occasionally drops out of raw mode (stdin ends up in
-  // cooked+echo, keystrokes pile up as literal `^M` below the TUI, slash
-  // commands stop working), and the only reliable recovery is a brand-new pty.
-  // Killing the session + recreating on launch gives every restart a fresh pty
-  // and clears any accumulated termios state.
+  // Shut down a bot: graceful first, forceful only if that stalls.
   //
-  // Before the tmux kill, reap Telegram plugin orphans — see
-  // `killTelegramPluginServers` for the why.
+  // Why the escalation — claude-code and the telegram plugin each have their
+  // own graceful-exit paths, and chaining them correctly avoids the common
+  // failure mode where SIGKILL lands on the plugin mid-stdio-flush and
+  // leaves MCP in a dirty state for the next session.
+  //
+  //   1. tmux send-keys "/exit" — most user-like. Claude runs its full exit
+  //      routine (session save, hooks), closes the MCP stdio. The plugin
+  //      has handlers for stdin 'end' / SIGTERM / SIGHUP / orphan ppid, so
+  //      its shutdown() runs on its own — bot.stop() drains the long-poll
+  //      (≤2s self-cap), then process.exit(0).
+  //   2. SIGTERM on claude's pid — fallback when the TUI isn't at a prompt
+  //      state (mid-tool, modal, or "/exit" got consumed as prompt text).
+  //      Signal delivery bypasses TUI state; Node's default closes stdio
+  //      before exit, which is all the plugin needs to cascade down.
+  //   3. SIGKILL — last-resort for a frozen TUI (raw-mode loss; rare).
+  //   4. killTelegramPluginServers — plugin pid that didn't follow claude
+  //      down on its own. Also mops up orphans from prior sessions claude
+  //      never knew about (cross-session accumulation — see memory file
+  //      project_telegram_mcp_instability).
+  //   5. tmux kill-session — fresh pty for the next boot. Still necessary
+  //      even when everything exited cleanly, because start.sh ends with
+  //      `exec bash -l`; that bash keeps the pane alive until we kill it,
+  //      and a fresh session clears any accumulated termios state.
   async function killProcess(bot) {
+    const isAlive = (pid) => {
+      try {
+        process.kill(pid, 0);
+        return true;
+      } catch {
+        return false;
+      }
+    };
+    const waitUntil = async (pred, timeoutMs, probeMs = 100) => {
+      const deadline = Date.now() + timeoutMs;
+      while (Date.now() < deadline) {
+        if (pred()) return true;
+        await sleep(probeMs);
+      }
+      return false;
+    };
+
+    const claudePid = getClaudePid(bot);
+    const initialPluginPids = findTelegramPluginPids(bot);
+    const sessionUp = sessionExists(bot);
+
+    if (claudePid) {
+      if (sessionUp) {
+        try {
+          sh(`tmux send-keys -t ${bot.session} '/exit' Enter`);
+          // Claude Code shows "Exit anyway / Stay" when CronCreate has
+          // pending scheduled tasks. The default highlight is "Exit anyway",
+          // so a second Enter confirms it. When no modal appears (no pending
+          // tasks) the extra Enter lands on the bash prompt exec'd by
+          // start.sh — harmless.
+          await sleep(300);
+          sh(`tmux send-keys -t ${bot.session} Enter`);
+        } catch {
+          /* send-keys race / session died mid-call — fall through */
+        }
+        await waitUntil(() => !isAlive(claudePid), 3000);
+      }
+      if (isAlive(claudePid)) {
+        try {
+          process.kill(claudePid, 'SIGTERM');
+        } catch {
+          /* already gone */
+        }
+        await waitUntil(() => !isAlive(claudePid), 2000);
+      }
+      if (isAlive(claudePid)) {
+        try {
+          process.kill(claudePid, 'SIGKILL');
+          console.log(
+            `[killProcess] ${bot.name}: claude pid ${claudePid} ignored /exit+SIGTERM, SIGKILLed`
+          );
+        } catch {
+          /* raced to exit */
+        }
+      }
+    }
+
+    // Plugin pids should cascade down via MCP EOF. Give them time to finish
+    // their own shutdown (bot.stop draining in-flight long-poll).
+    await waitUntil(
+      () => initialPluginPids.every((p) => !isAlive(p)),
+      3000
+    );
+
+    // Forceful fallback: survivors + orphans from prior sessions.
     await killTelegramPluginServers(bot);
+
     if (!sessionExists(bot)) return false;
     try {
       sh(`tmux kill-session -t ${bot.session}`);
